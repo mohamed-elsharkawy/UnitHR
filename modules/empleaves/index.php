@@ -346,10 +346,18 @@ if ($action === 'view' && $id) {
 
 // LIST
 require_permission($module, 'view');
+$search = trim($_GET['search'] ?? '');
+$where = "l.omitted = 0";
+$params = [];
+if ($search !== '') {
+    $norm = arabic_normalize($search);
+    $where .= " AND (l.empfullname LIKE ? OR l.empfullnamear LIKE ? OR l.leavetypename LIKE ? OR l.leavetypenamear LIKE ?)";
+    $params = ['%'.$search.'%', '%'.$norm.'%', '%'.$search.'%', '%'.$norm.'%'];
+}
 $rows = fetchAll("SELECT l.*, e.empfullname, e.empfullnamear
     FROM " . table('empleaves') . " l
     LEFT JOIN " . table('employeesmain') . " e ON e.id = l.empid
-    WHERE l.omitted = 0 ORDER BY l.id DESC");
+    WHERE $where ORDER BY l.id DESC", $params);
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-calendar-check me-2"></i><?= $isAr ? 'إجازات الموظفين' : 'Employee Leaves' ?></h2>
@@ -361,6 +369,12 @@ $rows = fetchAll("SELECT l.*, e.empfullname, e.empfullnamear
         <a href="index.php?module=empleaves&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
     </div>
 </div>
+<form method="get" class="row g-2 mb-3 align-items-end">
+    <input type="hidden" name="module" value="empleaves">
+    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="Search (Arabic/English)..."></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
+    <div class="col-md-2"><a href="index.php?module=empleaves" class="btn btn-outline-secondary w-100">Reset</a></div>
+</form>
 <div class="table-responsive">
 <table class="table table-striped table-hover align-middle table-sm">
 <thead class="table-dark"><tr>

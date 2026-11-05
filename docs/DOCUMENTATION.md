@@ -147,6 +147,15 @@ Configurable leave types with rules:
 - Approve: deducts from leave balance
 - Reject: records rejection reason, who, and when
 
+### Employee Seniority & Promotion
+- Seniority date calculated based on degree acquired date and interim period
+- Excess time in a degree carries over to the new degree upon promotion
+- Formula: `seniority_date = promotion_date - (time_in_degree - interim_period)`
+- Promotion eligibility: interim period elapsed + vacant next degree exists
+- Job groups: Specialized (Higher Education) and Technical & Clerical (Diploma)
+- Seniority management module with promotion workflow UI
+- Helper functions: `calculate_seniority_date()`, `is_eligible_for_promotion()`
+
 ---
 
 ## Export System
@@ -155,15 +164,32 @@ Configurable leave types with rules:
 | Format | Library | Content Type |
 |--------|---------|-------------|
 | CSV | Built-in (fputcsv) | text/csv |
-| XLSX | PhpSpreadsheet | application/vnd.openxmlformats-officedocument.spreadsheetml.sheet |
-| Word (DOCX) | Built-in (ZipWriter) | application/vnd.openxmlformats-officedocument.wordprocessingml.document |
-| PDF | DomPDF | application/pdf |
+| XLSX | PhpSpreadsheet + ZipStream | application/vnd.openxmlformats-officedocument.spreadsheetml.sheet |
+| Word (DOCX) | Built-in (ZipWriter / OOXML) | application/vnd.openxmlformats-officedocument.wordprocessingml.document |
+| PDF | DomPDF + php-font-lib + php-svg-lib | application/pdf |
+
+All dependencies are bundled offline under `assets/` and registered in `includes/autoload.php`:
+`assets/PhpSpreadsheet/`, `assets/zipstream/`, `assets/dompdf/`, `assets/psr/`, `assets/composer-pcre/`, `assets/masterminds/`.
 
 ### Export Flow
 1. User clicks export button on list page
 2. Module's export handler queries data
-3. `do_export()` dispatches to format-specific function
-4. File is sent as download with appropriate headers
+3. `do_export()` calls `export_clean_buffers()` to discard the layout HTML the front controller buffered
+4. The format-specific function sets headers and streams the file
+5. `\Throwable` is caught in the XLSX/PDF paths so an unavailable library falls back to the built-in generator instead of returning an HTTP 500
+
+> The buffer cleanup is required: `index.php` includes `header.php` before loading the module, so without it every download would start with `<!DOCTYPE html>` and be corrupted.
+
+### Arabic PDF Support
+
+DomPDF has no Arabic contextual shaping and no Unicode bidi algorithm, so Arabic would otherwise print as disconnected letters, left-to-right. `export_pdf()` now:
+
+1. Runs `uhr_shape_arabic()` to map each letter to its isolated/initial/medial/final presentation form (U+FE70–U+FEFF, present in the bundled DejaVu Sans font), including lam-alef ligatures.
+2. Runs `uhr_pdf_arabic()` to reorder mixed Arabic/Latin/number runs for right-to-left display, keeping numbers, dates, and Latin names intact.
+3. Reverses the column order and right-aligns the table when the UI language is Arabic.
+4. Keeps English exports left-to-right and left-aligned; Arabic cell values are still shaped when they appear.
+
+Other formats are unaffected: Word and Excel store logical Unicode text and perform their own shaping/bidi.
 
 ---
 

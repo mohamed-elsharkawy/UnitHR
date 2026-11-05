@@ -29,7 +29,7 @@
 // Show devtool toggle button for admins only
 $isAr = lang() === 'ar';
 $u = current_user();
-$isAdmin = $u && (is_superadmin() || !empty($u['is_admin']));
+$isAdmin = is_superadmin() || !empty($u['is_admin']);
 $devtoolDisabled = !empty($_SESSION['devtool_disabled']);
 ?>
 <?php if ($isAdmin): ?>

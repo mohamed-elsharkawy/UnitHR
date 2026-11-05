@@ -1,9 +1,18 @@
 <?php
+// Layout mode: ESS pages, auth pages, or the full admin layout.
+// These flags can be preset by the caller; otherwise derive them from the request.
+if (!isset($isEss)) {
+    $isEss = (function_exists('current_module') && current_module() === 'ess');
+}
+if (!isset($isAuthPage)) {
+    $isAuthPage = in_array($_GET['action'] ?? '', ['login', 'verify-otp', 'setup-otp', 'otp', 'logout', 'change-password'], true);
+}
+
 // Build grouped module tree for the sidebar
 $moduleGroups = [
     'Dashboard'            => ['home'],
     'Organization'         => ['deptypes', 'depstructure'],
-    'Employees'            => ['employeesmain', 'employeesgroup', 'employeestypes', 'empdegrees', 'empstatus', 'retireplan'],
+    'Employees'            => ['employeesmain', 'employeesgroup', 'employeestypes', 'empdegrees', 'empstatus', 'retireplan', 'empseniority', 'jobgroups'],
     'Leaves'               => ['leavestypes', 'leavesbalances', 'empleaves'],
     'Users & Permissions'  => ['users', 'permissions', 'appmodules', 'accesslog'],
     'Fiscal'               => ['fiscalyears'],
@@ -37,7 +46,9 @@ $moduleNamesAr = [
     'empstatus'        => 'الحالة الوظيفية',
     'retireplan'       => 'خطة التقاعد',
     'fiscalyears'      => 'السنة المالية',
-    'employeesmain'    => 'الموظفون الرئيسيون',
+    'employeesmain'    => 'الموظفين',
+    'empseniority'     => 'أقدمية الموظفين',
+    'jobgroups'        => 'مجموعات الوظائف',
     'leavesbalances'   => 'أرصدة الإجازات',
     'empleaves'        => 'إجازات الموظفين',
     'reports'          => 'التقارير',
@@ -59,8 +70,6 @@ if (!function_exists('mod_display_name')) {
     }
 }
 ?>
-<?php $isEss = (current_module() === 'ess'); ?>
-<?php $isAuthPage = in_array($_GET['action'] ?? '', ['login', 'verify-otp', 'setup-otp', 'otp', 'logout', 'change-password']); ?>
 <!DOCTYPE html>
 <html lang="<?= lang() ?>" dir="<?= dir_attr() ?>">
 <head>
@@ -84,7 +93,6 @@ if (!function_exists('mod_display_name')) {
         [dir="rtl"] .sidebar .group-toggle.collapsed .chevron { transform: rotate(90deg); }
         .sidebar .group-items .nav-link { padding-left: 1.75rem; font-size: 0.85rem; }
         [dir="rtl"] .sidebar .group-items .nav-link { padding-left: 1rem; padding-right: 1.75rem; }
-        .content-wrapper { flex: 1; min-width: 0; }
         .sidebar.collapsed { width: 0; overflow: hidden; padding: 0; border: 0; }
         @media (max-width: 768px) {
             .sidebar { position: fixed; left: -260px; z-index: 1040; height: 100vh; }
@@ -94,6 +102,9 @@ if (!function_exists('mod_display_name')) {
         }
         .sidebar-toggle { display: none; }
         @media (max-width: 768px) { .sidebar-toggle { display: inline-block; } }
+        /* RTL navbar: keep the language switch and user menu at the left edge */
+        [dir="rtl"] .navbar-nav.ms-auto { margin-left: 0 !important; margin-right: auto !important; }
+        [dir="rtl"] .navbar .dropdown-menu-end { left: 0; right: auto; }
     </style>
 </head>
 <body>
@@ -102,8 +113,8 @@ if (!function_exists('mod_display_name')) {
 <nav class="navbar navbar-expand-lg navbar-dark bg-dark">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center" href="index.php?module=ess">
-            <img src="<?= htmlspecialchars(app('applogo')) ?>" alt="Logo" width="31" height="28" class="me-2" onerror="this.style.display='none'">
-			<span class="fw-bold"><?= htmlspecialchars(app('appname', 'UnitHR')) ?> - <?= lang() === 'ar' ? 'خدمة الموظف الذاتية' : 'Employee Self-Service' ?></span>
+            <img src="<?= htmlspecialchars(app('applogo')) ?>" alt="Logo" width="28" height="28" class="me-2" onerror="this.style.display='none'">
+            <span class="fw-bold"><?= htmlspecialchars(app('appname', 'UnitHR')) ?> - <?= lang() === 'ar' ? 'خدمة الموظف الذاتية' : 'Employee Self-Service' ?></span>
         </a>
         <ul class="navbar-nav ms-auto align-items-center">
             <li class="nav-item me-2">
@@ -166,9 +177,10 @@ if (!function_exists('mod_display_name')) {
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end">
                         <li><a class="dropdown-item" href="index.php?module=users"><?= lang() === 'ar' ? 'المستخدمون' : 'Users' ?></a></li>
+                        <?php if (is_superadmin() || !empty(current_user()['is_admin'])): ?>
                         <li><a class="dropdown-item" href="index.php?module=accesslog"><?= lang() === 'ar' ? 'سجل الدخول' : 'Access Log' ?></a></li>
+                        <?php endif; ?>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="index.php?action=change-password"><i class="bi bi-key me-1"></i><?= lang() === 'ar' ? 'تغيير كلمة المرور' : 'Change Password' ?></a></li>
                         <li><a class="dropdown-item" href="index.php?action=change-password"><i class="bi bi-key me-1"></i><?= lang() === 'ar' ? 'تغيير كلمة المرور' : 'Change Password' ?></a></li>
                         <li><a class="dropdown-item" href="index.php?action=logout"><?= lang() === 'ar' ? 'تسجيل خروج' : 'Logout' ?></a></li>
                     </ul>
@@ -186,7 +198,7 @@ if (!function_exists('mod_display_name')) {
         <!-- Sidebar -->
         <aside id="sidebar" class="sidebar bg-dark" style="overflow-y: auto; max-height: calc(100vh - 120px);">
         <div class="sidebar-header p-3 border-bottom border-secondary d-flex align-items-center justify-content-end">
-			<button class="btn btn-outline-light btn-sm sidebar-toggle" type="button" onclick="toggleSidebar()"><i class="bi bi-layout-sidebar"></i></button>
+            <button class="btn btn-outline-light btn-sm sidebar-toggle" type="button" onclick="toggleSidebar()"><i class="bi bi-layout-sidebar"></i></button>
         </div>
         <nav class="py-2">
             <?php foreach ($moduleGroups as $groupName => $folders): ?>
@@ -236,14 +248,89 @@ function toggleSidebar() {
     var s = document.getElementById('sidebar');
     if (s) s.classList.toggle('collapsed');
 }
-// Add red asterisk to mandatory field labels
-document.addEventListener('DOMContentLoaded', function() {
-    var inputs = document.querySelectorAll('input[required], select[required], textarea[required]');
-    inputs.forEach(function(input) {
+
+// Add red asterisk to mandatory field labels and make dropdowns searchable.
+// Runs once per page, after the DOM is ready, and works on every layout.
+function initUI() {
+    var requiredInputs = document.querySelectorAll('input[required], select[required], textarea[required]');
+    requiredInputs.forEach(function(input) {
         var label = input.closest('.mb-3') ? input.closest('.mb-3').querySelector('label') : null;
         if (label && !label.querySelector('.text-danger')) {
             label.innerHTML += ' <span class="text-danger">*</span>';
         }
     });
-});
+
+    var ariaSearch = <?= json_encode(lang() === 'ar' ? 'بحث...' : 'Search...') ?>;
+    var selects = document.querySelectorAll('select.form-select, select.form-control');
+    selects.forEach(function(select) {
+        if (select.dataset.searchable === 'false') return;
+        if (select.options.length <= 3) return;
+        if (select.parentNode.querySelector('.custom-select-search')) return;
+
+        // Snapshot the original options so clearing the filter can restore them exactly.
+        var snapshot = Array.prototype.map.call(select.options, function(opt) {
+            return { value: opt.value, text: opt.text, disabled: opt.disabled, selected: opt.selected };
+        });
+
+        var searchInput = document.createElement('input');
+        searchInput.type = 'text';
+        searchInput.className = 'form-control form-control-sm mb-1 custom-select-search';
+        searchInput.placeholder = ariaSearch;
+        searchInput.setAttribute('autocomplete', 'off');
+        searchInput.style.fontSize = '0.85rem';
+
+        function renderOptions(term) {
+            var previousValue = select.value;
+            var fragment = document.createDocumentFragment();
+            var matchCount = 0;
+
+            snapshot.forEach(function(opt) {
+                var isPlaceholder = (opt.value === '');
+                var textMatch = !term || opt.text.toLowerCase().indexOf(term) !== -1;
+                if (isPlaceholder || textMatch) {
+                    var el = document.createElement('option');
+                    el.value = opt.value;
+                    el.textContent = opt.text;
+                    if (opt.disabled) el.disabled = true;
+                    fragment.appendChild(el);
+                    if (!isPlaceholder) matchCount++;
+                }
+            });
+
+            select.innerHTML = '';
+            select.appendChild(fragment);
+
+            if (!term) {
+                // Clearing the search restores the original selection/placeholder.
+                if (previousValue !== '') select.value = previousValue;
+                if (select.selectedIndex === -1) select.selectedIndex = 0;
+            } else if (matchCount > 0) {
+                var kept = false;
+                for (var i = 0; i < select.options.length; i++) {
+                    if (select.options[i].value === previousValue) { kept = true; break; }
+                }
+                if (previousValue !== '' && kept) {
+                    select.value = previousValue;
+                } else {
+                    select.selectedIndex = 0;
+                }
+            } else {
+                // No matches: leave only the placeholder visible.
+                select.selectedIndex = 0;
+            }
+        }
+
+        searchInput.addEventListener('input', function() {
+            renderOptions(this.value.toLowerCase().trim());
+        });
+
+        select.parentNode.insertBefore(searchInput, select);
+    });
+}
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initUI);
+} else {
+    initUI();
+}
 </script>

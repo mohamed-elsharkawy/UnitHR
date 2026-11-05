@@ -18,7 +18,7 @@ $messages = [];
 $isCli = php_sapi_name() === 'cli';
 
 // Total steps for progress calculation
-$totalSteps = 15;
+$totalSteps = 16;
 $currentStep = 0;
 
 function progress_bar($percent, $label = '') {
@@ -198,9 +198,41 @@ try {
     msg("Leave types inserted.");
 
     step('Inserting employee degrees...', function() use ($pdo, $P) {
-        $degrees = ['Sixth Degree'=>'الدرجة السادسة','Fifth Degree'=>'الدرجة الخامسة','Fourth Degree'=>'الدرجة الرابعة','Third Degree C'=>'الدرجة الثالثة ج','Third Degree B'=>'الدرجة الثالثة ب','Third Degree A'=>'الدرجة الثالثة أ','Second Degree B'=>'الدرجة الثانية ب','Second Degree A'=>'الدرجة الثانية أ','First Degree B'=>'الدرجة الأولى ب','First Degree A'=>'الدرجة الأولى أ','Manager'=>'مدير عام','Director'=>'رئيس إدارة مركزية','Head of Sector'=>'رئيس قطاع','Consultant'=>'مستشار'];
-        foreach ($degrees as $en => $ar) {
-            $pdo->prepare("INSERT INTO `{$P}empdegrees` (rguid, degreename, degreenamear, interimperiod, reqexam, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,0,0,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([bin2hex(random_bytes(16)), $en, $ar]);
+        $degrees = [
+            'Sixth Degree'=>['ar'=>'الدرجة السادسة','interim'=>3],
+            'Fifth Degree'=>['ar'=>'الدرجة الخامسة','interim'=>3],
+            'Fourth Degree'=>['ar'=>'الدرجة الرابعة','interim'=>3],
+            'Third Degree C'=>['ar'=>'الدرجة الثالثة ج','interim'=>3],
+            'Third Degree B'=>['ar'=>'الدرجة الثالثة ب','interim'=>3],
+            'Third Degree A'=>['ar'=>'الدرجة الثالثة أ','interim'=>3],
+            'Second Degree B'=>['ar'=>'الدرجة الثانية ب','interim'=>3],
+            'Second Degree A'=>['ar'=>'الدرجة الثانية أ','interim'=>3],
+            'First Degree B'=>['ar'=>'الدرجة الأولى ب','interim'=>3],
+            'First Degree A'=>['ar'=>'الدرجة الأولى أ','interim'=>0],
+            'Manager'=>['ar'=>'مدير عام','interim'=>0],
+            'Director'=>['ar'=>'رئيس إدارة مركزية','interim'=>0],
+            'Head of Sector'=>['ar'=>'رئيس قطاع','interim'=>0],
+            'Consultant'=>['ar'=>'مستشار','interim'=>0],
+        ];
+        foreach ($degrees as $en => $info) {
+            $pdo->prepare("INSERT INTO `{$P}empdegrees` (rguid, degreename, degreenamear, interimperiod, reqexam, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,? ,0,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([bin2hex(random_bytes(16)), $en, $info['ar'], $info['interim']]);
+        }
+        // Set next degree mappings
+        $degreeMap = [];
+        $allDegrees = $pdo->query("SELECT id, degreename FROM `{$P}empdegrees` WHERE omitted=0")->fetchAll(PDO::FETCH_KEY_PAIR);
+        foreach ($allDegrees as $id => $name) { $degreeMap[$name] = $id; }
+        $nextMap = [
+            'Sixth Degree'=>'Fifth Degree','Fifth Degree'=>'Fourth Degree','Fourth Degree'=>'Third Degree C',
+            'Third Degree C'=>'Third Degree B','Third Degree B'=>'Third Degree A','Third Degree A'=>'Second Degree B',
+            'Second Degree B'=>'Second Degree A','Second Degree A'=>'First Degree B','First Degree B'=>'First Degree A',
+            'Manager'=>'Director','Director'=>'Head of Sector','Head of Sector'=>'Consultant',
+        ];
+        foreach ($nextMap as $from => $to) {
+            if (isset($degreeMap[$from]) && isset($degreeMap[$to])) {
+                $toDeg = $pdo->query("SELECT degreename, degreenamear FROM `{$P}empdegrees` WHERE id=" . (int)$degreeMap[$to])->fetch();
+                $pdo->prepare("UPDATE `{$P}empdegrees` SET nextdegreeid=?, nextdegreename=?, nextdegreenamear=? WHERE id=?")
+                    ->execute([$degreeMap[$to], $toDeg['degreename'], $toDeg['degreenamear'], $degreeMap[$from]]);
+            }
         }
     });
     msg("Employee degrees inserted.");
@@ -230,6 +262,17 @@ try {
         $pdo->prepare("INSERT INTO `{$P}fiscalyears` (rguid, fstartdate, fenddate, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([bin2hex(random_bytes(16)), '2025-01-01', '2025-12-31']);
     });
     msg("Fiscal years inserted.");
+
+    step('Inserting job groups...', function() use ($pdo, $P) {
+        $jobgroups = [
+            ['name'=>'Specialized Positions (Higher Education)','ar'=>'الوظائف التخصصية (شهادة جامعية)','code'=>'G1'],
+            ['name'=>'Technical & Clerical (Diploma)','ar'=>'الوظائف الفنية والكتابية (دبلوم)','code'=>'G2'],
+        ];
+        foreach ($jobgroups as $jg) {
+            $pdo->prepare("INSERT INTO `{$P}jobgroups` (rguid, jobgroupname, jobgroupnamear, jobgroupcode, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,?,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([bin2hex(random_bytes(16)), $jg['name'], $jg['ar'], $jg['code']]);
+        }
+    });
+    msg("Job groups inserted.");
 
     step('Creating SuperAdmin user...', function() use ($pdo, $P) {
         $encPass = password_hash('admin123', PASSWORD_DEFAULT);

@@ -235,8 +235,7 @@ if ($action === 'view' && $id) {
         <div class="card mb-3">
             <div class="card-header"><?= $isAr ? 'معلومات القسم' : 'Department Information' ?></div>
             <div class="card-body">
-                <p><strong><?= $isAr ? 'اسم القسم (عربي)' : 'Name (Arabic)' ?>:</strong> <?= htmlspecialchars($row['depnamear'] ?? '') ?></p>
-                <p><strong><?= $isAr ? 'اسم القسم (إنجليزي)' : 'Name (English)' ?>:</strong> <?= htmlspecialchars($row['depname'] ?? '') ?></p>
+                <p><strong><?= $isAr ? 'اسم القسم' : 'Department Name' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['depnamear'] ?? '') : ($row['depname'] ?? '')) ?></p>
                 <p><strong><?= $isAr ? 'القسم الأصلي' : 'Parent' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['depparentnamear'] ?? '') : ($row['depparentname'] ?? '')) ?></p>
                 <p><strong><?= $isAr ? 'نوع القسم' : 'Type' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['deptypear'] ?? '') : ($row['deptype'] ?? '')) ?></p>
                 <p><strong><?= $isAr ? 'المدير' : 'Manager' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['managernamear'] ?? '') : ($row['managername'] ?? '')) ?></p>
@@ -275,7 +274,15 @@ if ($action === 'view' && $id) {
 
 // LIST
 require_permission($module, 'view');
-$rows = fetchAll("SELECT * FROM " . table('depstructure') . " WHERE omitted=0 ORDER BY depname ASC");
+$search = trim($_GET['search'] ?? '');
+$where = "omitted = 0";
+$params = [];
+if ($search !== '') {
+    $norm = arabic_normalize($search);
+    $where .= " AND (depname LIKE ? OR depnamear LIKE ?)";
+    $params = ['%'.$search.'%', '%'.$norm.'%'];
+}
+$rows = fetchAll("SELECT * FROM " . table('depstructure') . " WHERE $where ORDER BY depname ASC", $params);
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-diagram-3 me-2"></i><?= $isAr ? 'هيكلة الأقسام' : 'Department Structure' ?></h2>
@@ -287,6 +294,12 @@ $rows = fetchAll("SELECT * FROM " . table('depstructure') . " WHERE omitted=0 OR
         <a href="index.php?module=depstructure&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
     </div>
 </div>
+<form method="get" class="row g-2 mb-3 align-items-end">
+    <input type="hidden" name="module" value="depstructure">
+    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="Search (Arabic/English)..."></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
+    <div class="col-md-2"><a href="index.php?module=depstructure" class="btn btn-outline-secondary w-100">Reset</a></div>
+</form>
 <div class="table-responsive">
 <table class="table table-striped table-hover align-middle">
 <thead class="table-dark"><tr>

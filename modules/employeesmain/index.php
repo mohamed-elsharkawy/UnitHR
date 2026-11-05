@@ -46,6 +46,7 @@ $statuses     = fetchAll("SELECT id, empstatusname, empstatusnamear FROM " . tab
 $degrees      = fetchAll("SELECT id, degreename, degreenamear FROM " . table('empdegrees') . " WHERE omitted=0 ORDER BY degreename ASC");
 $types        = fetchAll("SELECT id, emptypename, emptypenamear FROM " . table('employeestypes') . " WHERE omitted=0 ORDER BY emptypename ASC");
 $groups       = fetchAll("SELECT id, empgroupname, empgroupnamear FROM " . table('employeesgroup') . " WHERE omitted=0 ORDER BY empgroupname ASC");
+$jobgroups    = fetchAll("SELECT id, jobgroupname, jobgroupnamear FROM " . table('jobgroups') . " WHERE omitted=0 ORDER BY jobgroupname ASC");
 $employees    = fetchAll("SELECT id, empfullname, empfullnamear FROM " . table('employeesmain') . " WHERE omitted=0 ORDER BY empfullname ASC");
 
 $action = $_GET['a'] ?? 'list';
@@ -133,6 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['add', 'edit']))
             'emptypeid'          => ($_POST['emptypeid'] ?? '') ?: null,
             'empgroup'           => ($_POST['empgroup'] ?? '') ?: null,
             'empsuperiorid'      => ($_POST['empsuperiorid'] ?? '') ?: null,
+            'degreeacquireddate' => trim($_POST['degreeacquireddate'] ?? '') ?: null,
+            'senioritydate'      => trim($_POST['senioritydate'] ?? '') ?: null,
+            'jobgroupid'         => ($_POST['jobgroupid'] ?? '') ?: null,
         ];
         // resolve names
         if ($data['depid']) {
@@ -159,6 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['add', 'edit']))
             $sup = fetchRow("SELECT empfullname, empfullnamear FROM " . table('employeesmain') . " WHERE id=?", [$data['empsuperiorid']]);
             $data['empsuperiorname'] = $sup['empfullname'] ?? ''; $data['empsuperiornamear'] = $sup['empfullnamear'] ?? '';
         } else { $data['empsuperiorname'] = ''; $data['empsuperiornamear'] = ''; }
+        if ($data['jobgroupid']) {
+            $jg = fetchRow("SELECT jobgroupname, jobgroupnamear FROM " . table('jobgroups') . " WHERE id=?", [$data['jobgroupid']]);
+            $data['jobgroupname'] = $jg['jobgroupname'] ?? ''; $data['jobgroupnamear'] = $jg['jobgroupnamear'] ?? '';
+        } else { $data['jobgroupname'] = ''; $data['jobgroupnamear'] = ''; }
 
         if ($data['empfullname'] === '' || $data['empfullnamear'] === '') {
             set_flash('error', 'Employee full name (Arabic & English) is required.');
@@ -283,13 +291,15 @@ if ($action === 'add') {
     echo field_input(['name'=>'empfullname','label'=>'Full Name','label_ar'=>'الاسم الكامل','type'=>'text','required'=>true], '');
     echo field_input(['name'=>'empfullnamear','label'=>'Full Name (Arabic)','label_ar'=>'الاسم الكامل بالعربية','type'=>'text','required'=>true], '');
     echo field_input(['name'=>'email','label'=>'Email','label_ar'=>'البريد الإلكتروني','type'=>'email'], '');
-    echo field_input(['name'=>'nid','label'=>'National ID (min 14 chars)','label_ar'=>'','type'=>'text','required'=>true,'placeholder'=>'e.g. 29001010123456'], '');
+    echo field_input(['name'=>'nid','label'=>'National ID (min 14 chars)','label_ar'=>'الرقم القومي','type'=>'text','required'=>true,'placeholder'=>'e.g. 29001010123456'], '');
     // Add onblur event to NID field via JavaScript
     echo '<script>
     document.addEventListener("DOMContentLoaded", function() {
         var nidInput = document.querySelector("input[name=\"nid\"]");
         if (nidInput) {
             nidInput.addEventListener("blur", function() { deduceFromNID(this.value); });
+            nidInput.addEventListener("focusout", function() { deduceFromNID(this.value); });
+            nidInput.addEventListener("keyup", function() { deduceFromNID(this.value); });
             nidInput.addEventListener("input", function() {
                 if (this.value.length >= 14) { deduceFromNID(this.value); }
             });
@@ -309,9 +319,11 @@ if ($action === 'add') {
         var d = new Date(dop);
         if (isNaN(d.getTime())) { dop = ""; }
         // Gender: odd = Male, even = Female
-        var genderDigit = parseInt(nid.charAt(12) || nid.charAt(nid.length - 1), 10);
-        var gender = (genderDigit % 2 !== 0) ? "Male" : "Female";
-        var genderAr = (gender === "Male") ? "ذكر" : "أنثى";
+        //var genderDigit = parseInt(nid.charAt(12) || nid.charAt(nid.length - 1), 10);
+		var genderDigit = parseInt(nid.slice(-3), 10);
+        var gender = (genderDigit % 2 !== 0) ? "Female" : "Male";
+        //var genderAr = (gender === "Male") ? "ذكر" : "أنثى";
+		var genderAr = (gender === "Male") ? "أنثى" : "ذكر";
         // Update fields
         var dopField = document.getElementById("dop_field");
         var dorField = document.getElementById("dor_field");
@@ -330,20 +342,20 @@ if ($action === 'add') {
         }
     }
     </script>';
-    echo field_input(['name'=>'insuranceid','label'=>'Insurance ID','label_ar'=>'','type'=>'text'], '');
+    echo field_input(['name'=>'insuranceid','label'=>'Insurance ID','label_ar'=>'الرقم التأميني','type'=>'text'], '');
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'تاريخ الميلاد (من الرقم القومي)':'Date of Birth (from NID)').'</label>'
         .'<input type="date" name="dop" id="dop_field" class="form-control" value="'.htmlspecialchars($ded['dop']).'" readonly></div>';
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'تاريخ التقاعد':'Retirement Date').'</label>'
         .'<input type="date" name="dor" id="dor_field" class="form-control" value="'.htmlspecialchars($dor).'" readonly></div>';
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'النوع':'Gender').'</label>'
-        .'<select name="empgender" id="gender_field" class="form-select" disabled>'
+        .'<select name="empgender" id="gender_field" class="form-select">'
         .'<option value="'.htmlspecialchars($ded['gender']).'" selected>'.htmlspecialchars($isAr ? ($ded['gender'] === 'Male' ? 'ذكر' : 'أنثى') : $ded['gender']).'</option>'
         .'</select>'
         .'<input type="hidden" name="empgender" id="gender_hidden" value="'.htmlspecialchars($ded['gender']).'"></div>';
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'القسم':'Department').'</label>'
         .'<select name="depid" class="form-select">'
         . $opt($departments, 'id', 'depnamear', 'depname') . '</select></div>';
-    echo field_input(['name'=>'biometricid','label'=>'Biometric ID','label_ar'=>'','type'=>'text'], '');
+    echo field_input(['name'=>'biometricid','label'=>'Biometric ID','label_ar'=>'كود جهاز البصمة','type'=>'text'], '');
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'الحالة الوظيفية':'Job Status').'</label>'
         .'<select name="empstatusid" class="form-select">'
         . $opt($statuses, 'id', 'empstatusnamear', 'empstatusname') . '</select></div>';
@@ -356,6 +368,9 @@ if ($action === 'add') {
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'مجموعة الموظفين':'Employee Group').'</label>'
         .'<select name="empgroup" class="form-select">'
         . $opt($groups, 'id', 'empgroupnamear', 'empgroupname') . '</select></div>';
+    echo '<div class="mb-3"><label class="form-label">'.($isAr?'مجموعة الوظائف':'Job Group').'</label>'
+        .'<select name="jobgroupid" class="form-select"><option value="">-- Select --</option>'
+        . $opt($jobgroups, 'id', 'jobgroupnamear', 'jobgroupname') . '</select></div>';
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'المدير المباشر':'Direct Superior').'</label>'
         .'<select name="empsuperiorid" class="form-select">'
         . $opt($employees, 'id', 'empfullnamear', 'empfullname') . '</select></div>';
@@ -387,6 +402,11 @@ if ($action === 'edit' && $id && $row) {
         .'<option value="Male"'.($row['empgender']=='Male' || $row['empgender']=='ذكر' ? ' selected' : '').'>'.($isAr ? 'ذكر' : 'Male').'</option>'
         .'<option value="Female"'.($row['empgender']=='Female' || $row['empgender']=='أنثى' ? ' selected' : '').'>'.($isAr ? 'أنثى' : 'Female').'</option>'
         .'</select></div>';
+    echo field_input(['name'=>'degreeacquireddate','label'=>'Degree Acquired Date','label_ar'=>'تاريخ الحصول على الدرجة','type'=>'date'], $row['degreeacquireddate']);
+    echo field_input(['name'=>'senioritydate','label'=>'Seniority Date','label_ar'=>'تاريخ الأقدمية','type'=>'date'], $row['senioritydate']);
+    echo '<div class="mb-3"><label class="form-label">'.($isAr?'مجموعة الوظائف':'Job Group').'</label>'
+        .'<select name="jobgroupid" class="form-select"><option value="">-- Select --</option>'
+        . $opt($jobgroups, 'id', 'jobgroupnamear', 'jobgroupname', $row['jobgroupid']) . '</select></div>';
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'القسم':'Department').'</label>'
         .'<select name="depid" class="form-select">'
         . $opt($departments, 'id', 'depnamear', 'depname', $row['depid']) . '</select></div>';
@@ -428,8 +448,7 @@ if ($action === 'view' && $id) {
         <div class="card mb-3">
             <div class="card-header"><?= $isAr ? 'المعلومات الشخصية' : 'Personal Information' ?></div>
             <div class="card-body">
-                <p><strong><?= $isAr ? 'الاسم (عربي)' : 'Full Name (Arabic)' ?>:</strong> <?= htmlspecialchars($row['empfullnamear'] ?? '') ?></p>
-                <p><strong><?= $isAr ? 'الاسم (إنجليزي)' : 'Full Name (English)' ?>:</strong> <?= htmlspecialchars($row['empfullname'] ?? '') ?></p>
+                <p><strong><?= $isAr ? 'الاسم' : 'Full Name' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['empfullnamear'] ?? '') : ($row['empfullname'] ?? '')) ?></p>
                 <p><strong><?= $isAr ? 'الرقم القومي' : 'National ID' ?>:</strong> <?= htmlspecialchars($row['nid'] ?? '') ?></p>
                 <p><strong><?= $isAr ? 'اسم المستخدم (تسجيل الدخول)' : 'Login Username' ?>:</strong> <?= htmlspecialchars($row['nid'] ?? '') ?></p>
                 <p><strong><?= $isAr ? 'البريد الإلكتروني' : 'Email' ?>:</strong> <?= htmlspecialchars($row['email'] ?? '') ?></p>
@@ -437,6 +456,9 @@ if ($action === 'view' && $id) {
                 <p><strong><?= $isAr ? 'تاريخ الميلاد' : 'Date of Birth' ?>:</strong> <?= htmlspecialchars($row['dop'] ?? '') ?></p>
                 <p><strong><?= $isAr ? 'تاريخ التقاعد' : 'Retirement Date' ?>:</strong> <?= htmlspecialchars($row['dor'] ?? '') ?></p>
                 <p><strong><?= $isAr ? 'النوع' : 'Gender' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['empgender'] === 'Male' ? 'ذكر' : 'أنثى') : ($row['empgender'] ?? '')) ?></p>
+                <p><strong><?= $isAr ? 'تاريخ الحصول على الدرجة' : 'Degree Acquired Date' ?>:</strong> <?= htmlspecialchars($row['degreeacquireddate'] ?? '') ?></p>
+                <p><strong><?= $isAr ? 'تاريخ الأقدمية' : 'Seniority Date' ?>:</strong> <?= htmlspecialchars($row['senioritydate'] ?? '') ?></p>
+                <p><strong><?= $isAr ? 'مجموعة الوظائف' : 'Job Group' ?>:</strong> <?= htmlspecialchars($isAr ? ($row['jobgroupnamear'] ?? '') : ($row['jobgroupname'] ?? '')) ?></p>
                 <p><strong><?= $isAr ? 'البصمة' : 'Biometric ID' ?>:</strong> <?= htmlspecialchars($row['biometricid'] ?? '') ?></p>
             </div>
         </div>
@@ -465,10 +487,18 @@ if ($action === 'view' && $id) {
 
 // LIST
 require_permission($module, 'view');
-$rows = fetchAll("SELECT * FROM " . table('employeesmain') . " WHERE omitted=0 ORDER BY empfullname ASC");
+$search = trim($_GET['search'] ?? '');
+$where = "omitted = 0";
+$params = [];
+if ($search !== '') {
+    $norm = arabic_normalize($search);
+    $where .= " AND (empfullname LIKE ? OR empfullnamear LIKE ? OR nid LIKE ?)";
+    $params = ['%'.$search.'%', '%'.$norm.'%', '%'.$search.'%'];
+}
+$rows = fetchAll("SELECT * FROM " . table('employeesmain') . " WHERE $where ORDER BY empfullname ASC", $params);
 ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
-    <h2><i class="bi bi-person-lines-fill me-2"></i><?= $isAr ? 'الموظفون الرئيسيون' : 'Employees Main' ?></h2>
+    <h2><i class="bi bi-person-lines-fill me-2"></i><?= $isAr ? 'الموظفين' : 'Employees Main' ?></h2>
     <div>
         <?php if ($canAdd): ?><a href="index.php?module=employeesmain&a=add" class="btn btn-primary me-1"><i class="bi bi-plus me-1"></i><?= $isAr ? 'إضافة' : 'Add' ?></a><?php endif; ?>
         <a href="index.php?module=employeesmain&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1">CSV</a>
@@ -477,6 +507,12 @@ $rows = fetchAll("SELECT * FROM " . table('employeesmain') . " WHERE omitted=0 O
         <a href="index.php?module=employeesmain&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
     </div>
 </div>
+<form method="get" class="row g-2 mb-3 align-items-end">
+    <input type="hidden" name="module" value="employeesmain">
+    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search ?? '') ?>" placeholder="Search (Arabic/English)..."></div>
+    <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
+    <div class="col-md-2"><a href="index.php?module=employeesmain" class="btn btn-outline-secondary w-100">Reset</a></div>
+</form>
 <div class="table-responsive">
 <table class="table table-striped table-hover align-middle table-sm">
 <thead class="table-dark"><tr>

@@ -123,6 +123,7 @@ $lang['module_leavesbalances'] = 'Leave Balances';
 $lang['module_empleaves'] = 'Employee Leaves';
 $lang['module_reports'] = 'Reports';
 $lang['module_ess'] = 'Employee Self-Service';
+$lang['module_empseniority'] = 'Employee Seniority';
 
 // ============================================================
 // DASHBOARD
@@ -393,6 +394,21 @@ $lang['no_permission_approve'] = 'You do not have permission to approve this lea
 $lang['employees_report'] = 'Employees Report';
 $lang['leaves_report'] = 'Leaves Report';
 $lang['leave_balances_report'] = 'Leave Balances Report';
+$lang['employee_seniority'] = 'Employee Seniority';
+$lang['current_degree'] = 'Current Degree';
+$lang['degree_acquired'] = 'Degree Acquired';
+$lang['seniority_date'] = 'Seniority Date';
+$lang['interim_period'] = 'Interim Period';
+$lang['eligible'] = 'Eligible';
+$lang['next_degree'] = 'Next Degree';
+$lang['promote'] = 'Promote';
+$lang['promote_employee'] = 'Promote Employee';
+$lang['promotion_date'] = 'Promotion Date';
+$lang['employee_promoted'] = 'Employee promoted successfully.';
+$lang['invalid_data'] = 'Invalid data.';
+$lang['years'] = 'years';
+$lang['na'] = 'N/A';
+$lang['no_vacant_degree'] = 'No vacant degree available.';
 $lang['department_structure_report'] = 'Department Structure Report';
 $lang['no_data_export'] = 'No data to export.';
 $lang['db_not_available'] = 'Database not available.';

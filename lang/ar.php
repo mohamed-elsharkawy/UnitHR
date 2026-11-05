@@ -123,6 +123,7 @@ $lang['module_leavesbalances'] = 'أرصدة الإجازات';
 $lang['module_empleaves'] = 'إجازات الموظفين';
 $lang['module_reports'] = 'التقارير';
 $lang['module_ess'] = 'خدمة الموظف الذاتية';
+$lang['module_empseniority'] = 'أقدمية الموظفين';
 
 // ============================================================
 // DASHBOARD
@@ -385,6 +386,21 @@ $lang['approve_leave_confirm'] = 'الموافقة على هذه الإجازة�
 $lang['employees_report'] = 'تقرير الموظفين';
 $lang['leaves_report'] = 'تقرير الإجازات';
 $lang['leave_balances_report'] = 'تقرير أرصدة الإجازات';
+$lang['employee_seniority'] = 'أقدمية الموظفين';
+$lang['current_degree'] = 'الدرجة الحالية';
+$lang['degree_acquired'] = 'تاريخ الحصول على الدرجة';
+$lang['seniority_date'] = 'تاريخ الأقدمية';
+$lang['interim_period'] = 'فترة الانتقال';
+$lang['eligible'] = 'مؤهل';
+$lang['next_degree'] = 'الدرجة التالية';
+$lang['promote'] = 'ترقية';
+$lang['promote_employee'] = 'ترقية موظف';
+$lang['promotion_date'] = 'تاريخ الترقية';
+$lang['employee_promoted'] = 'تمت ترقية الموظف بنجاح.';
+$lang['invalid_data'] = 'بيانات غير صحيحة.';
+$lang['years'] = 'سنوات';
+$lang['na'] = 'لا يوجد';
+$lang['no_vacant_degree'] = 'لا توجد درجة شاغرة.';
 $lang['department_structure_report'] = 'تقرير هيكلة الأقسام';
 $lang['no_data_export'] = 'لا توجد بيانات للتصدير.';
 $lang['db_not_available'] = 'قاعدة البيانات غير متاحة.';

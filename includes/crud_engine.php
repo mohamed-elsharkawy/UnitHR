@@ -22,7 +22,8 @@ function run_table_module($cfg) {
     $pk     = $cfg['pk'] ?? 'id';
     $title  = $cfg['title'];
     $titleAr= $cfg['title_ar'] ?? $title;
-    $fields = $cfg['fields'];
+    $allFields = $cfg['fields'];
+    $fields = fields_for_lang($allFields);
     $orderBy= $cfg['order_by'] ?? "$pk DESC";
     $searchFields = $cfg['search_fields'] ?? [];
     $extraSelect = $cfg['extra_select'] ?? '';
@@ -66,8 +67,30 @@ function run_table_module($cfg) {
             }
         }
         $cols = array_values($expCols);
-        $selCols = implode(', ', array_map(function($c){ return '`'.$c.'`'; }, $cols));
-        $where = "omitted = 0 $extraWhere";
+        $mainTable = table($table);
+        $extraAliases = [];
+        if ($extraSelect !== '') {
+            preg_match_all('/\bAS\s+(\w+)/i', $extraSelect, $matches);
+            $extraAliases = $matches[1] ?? [];
+            foreach ($extraAliases as $alias) {
+                if (!in_array($alias, $cols)) {
+                    $cols[] = $alias;
+                }
+            }
+        }
+        $selColsArr = [];
+        foreach ($cols as $c) {
+            if ($extraFrom !== '' && !in_array($c, $extraAliases) && strpos($c, '.') === false && stripos($c, ' AS ') === false) {
+                $selColsArr[] = '`' . $mainTable . '`.`' . $c . '`';
+            } else {
+                $selColsArr[] = '`' . $c . '`';
+            }
+        }
+        $selCols = implode(', ', $selColsArr);
+        if ($extraSelect !== '') {
+            $selCols .= ' ' . $extraSelect;
+        }
+        $where = "`" . table($table) . "`.omitted = 0 $extraWhere";
         $params = [];
         if ($search !== '' && $searchFields) {
             $norm = arabic_normalize($search);
@@ -89,7 +112,7 @@ function run_table_module($cfg) {
         $headers = [];
         foreach ($cols as $c) {
             $f = null;
-            foreach ($fields as $fd) { if ($fd['name']===$c) { $f=$fd; break; } }
+            foreach ($allFields as $fd) { if ($fd['name']===$c) { $f=$fd; break; } }
             $headers[] = $f ? (lang()==='ar' && !empty($f['label_ar']) ? $f['label_ar'] : $f['label']) : ucfirst(str_replace('_',' ',$c));
         }
         do_export($fmt, $table.'_export', lang()==='ar'?$titleAr:$title, $headers, $outRows);
@@ -100,11 +123,18 @@ function run_table_module($cfg) {
     if ($action === 'add') {
         require_permission($module, 'add');
         $data = [];
-        foreach ($fields as $f) { $data[$f['name']] = ''; }
+        foreach ($allFields as $f) { $data[$f['name']] = ''; }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            $addExtraAliases = [];
+            if (!empty($cfg['extra_select'])) {
+                preg_match_all('/\bAS\s+(\w+)/i', $cfg['extra_select'], $m);
+                $addExtraAliases = $m[1] ?? [];
+            }
             $data = [];
-            foreach ($fields as $f) {
+            foreach ($allFields as $f) {
                 if (!isset($_POST[$f['name']])) continue;
+                // Skip extra alias columns (they come from JOINs, not table columns)
+                if (in_array($f['name'], $addExtraAliases)) continue;
                 $val = $_POST[$f['name']];
                 if (($f['type'] ?? '') === 'password' && $val === '') continue;
                 if (($f['type'] ?? '') === 'select' && $val === '') $val = null;
@@ -152,7 +182,7 @@ function run_table_module($cfg) {
                 <a href="index.php?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
               </div>';
         echo '<form method="post" action="index.php?module='.$module.'&a=add">';
-        foreach ($fields as $f) { echo field_input($f, $data[$f['name']] ?? ''); }
+        foreach ($allFields as $f) { echo field_input($f, $data[$f['name']] ?? ''); }
         echo '<div class="d-grid gap-2"><button class="btn btn-primary">Save</button>
               <a href="index.php?module='.$module.'" class="btn btn-secondary">Cancel</a></div>';
         echo '</form>';
@@ -166,9 +196,17 @@ function run_table_module($cfg) {
         if (!$row) { set_flash('error','Record not found.'); header('Location: index.php?module='.$module); exit; }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             shadow_log($table, $id, $row, 'update');
+            // Extract extra aliases for this handler
+            $editExtraAliases = [];
+            if (!empty($cfg['extra_select'])) {
+                preg_match_all('/\bAS\s+(\w+)/i', $cfg['extra_select'], $m);
+                $editExtraAliases = $m[1] ?? [];
+            }
             $data = [];
-            foreach ($fields as $f) {
+            foreach ($allFields as $f) {
                 if (!isset($_POST[$f['name']])) continue;
+                // Skip extra alias columns (they come from JOINs, not table columns)
+                if (in_array($f['name'], $editExtraAliases)) continue;
                 $val = $_POST[$f['name']];
                 if (($f['type'] ?? '') === 'password' && $val === '') continue;
                 if (($f['type'] ?? '') === 'select' && $val === '') $val = null;
@@ -211,7 +249,7 @@ function run_table_module($cfg) {
                 <a href="index.php?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
               </div>';
         echo '<form method="post" action="index.php?module='.$module.'&a=edit&id='.$id.'">';
-        foreach ($fields as $f) { echo field_input($f, $row[$f['name']] ?? ''); }
+        foreach ($allFields as $f) { echo field_input($f, $row[$f['name']] ?? ''); }
         echo '<div class="d-grid gap-2"><button class="btn btn-primary">Update</button>
               <a href="index.php?module='.$module.'" class="btn btn-secondary">Cancel</a></div>';
         echo '</form>';
@@ -249,7 +287,8 @@ function run_table_module($cfg) {
                 <a href="index.php?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
               </div>';
         echo '<div class="card"><div class="card-body">';
-        foreach ($fields as $f) {
+        $viewFields = fields_for_lang($allFields);
+        foreach ($viewFields as $f) {
             $val = $row[$f['name']] ?? '';
             echo '<p><strong>'.htmlspecialchars(lang()==='ar' && !empty($f['label_ar']) ? $f['label_ar'] : $f['label']).':</strong> '.htmlspecialchars((string)$val, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</p>';
         }
@@ -261,13 +300,17 @@ function run_table_module($cfg) {
 
     // ---------- LIST ----------
     require_permission($module, 'view');
-    $where = "omitted = 0 $extraWhere";
+    $where = "`" . table($table) . "`.omitted = 0 $extraWhere";
     $params = [];
     if ($search !== '' && $searchFields) {
         $norm = arabic_normalize($search);
         $conds = [];
         foreach ($searchFields as $sf) {
-            $conds[] = "(`$sf` LIKE ? OR `$sf` LIKE ?)";
+            if ($extraFrom !== '') {
+                $conds[] = "(`" . table($table) . "`.`$sf` LIKE ? OR `" . table($table) . "`.`$sf` LIKE ?)";
+            } else {
+                $conds[] = "(`$sf` LIKE ? OR `$sf` LIKE ?)";
+            }
             $params[] = '%'.$search.'%';
             $params[] = '%'.$norm.'%';
         }
@@ -275,11 +318,18 @@ function run_table_module($cfg) {
     }
     $cols = $listCols ? $listCols : array_column($fields, 'name');
     $cols = array_diff($cols, ['rguid','dtadded','addedbyid','addedby','addedbyname','addedbynamear','lastedit','editedbyid','editedby','editedbyname','editedbynamear','omitted']);
+    // Extract extra_select alias columns for display (they come from extra_select, not table columns)
+    $extraAliases = [];
+    if ($extraSelect !== '') {
+        preg_match_all('/\bAS\s+(\w+)/i', $extraSelect, $matches);
+        $extraAliases = $matches[1] ?? [];
+    }
     // Always include the primary key so edit/delete actions target the right record
     if (!in_array($pk, $cols, true)) {
         array_unshift($cols, $pk);
     }
     $cols = array_values($cols);
+    $listLabels = $cfg['list_labels'] ?? [];
     // Display columns: filter paired fields by current language (pk always hidden)
     $displayCols = [];
     foreach ($cols as $c) {
@@ -295,9 +345,52 @@ function run_table_module($cfg) {
             $displayCols[] = $c;
         }
     }
+
+    // Add extra_select alias columns to display list (they come from extra_select, not table columns)
+    // Only add the language-appropriate one for paired fields
+    foreach ($extraAliases as $alias) {
+        if ($alias === $pk) continue;
+        // Check if it's a paired field
+        $isArAlias = (strlen($alias) > 2 && substr($alias, -2) === 'ar');
+        $baseAlias = $isArAlias ? substr($alias, 0, -2) : $alias;
+        $counterpart = $isArAlias ? $baseAlias : $baseAlias . 'ar';
+        $hasCounterpart = in_array($counterpart, $extraAliases, true) || in_array($counterpart, $names, true);
+        if ($hasCounterpart) {
+            // Paired: only show in appropriate language
+            if (is_rtl() && $isArAlias) {
+                if (!in_array($alias, $displayCols)) $displayCols[] = $alias;
+            }
+            if (!is_rtl() && !$isArAlias) {
+                if (!in_array($alias, $displayCols)) $displayCols[] = $alias;
+            }
+        } else {
+            // Unpaired: always show
+            if (!in_array($alias, $displayCols)) $displayCols[] = $alias;
+        }
+    }
     $displayCols = array_values($displayCols);
-    $selCols = implode(', ', array_map(function($c){ return '`'.$c.'`'; }, $cols));
-    $rows = fetchAll("SELECT $selCols FROM `".table($table)."` $extraFrom WHERE $where ORDER BY $orderBy", $params);
+    $mainTable = table($table);
+    // Extract alias names from extra_select (e.g., "re.label AS reqexam_label" -> "reqexam_label")
+    $extraAliases = [];
+    if ($extraSelect !== '') {
+        preg_match_all('/\bAS\s+(\w+)/i', $extraSelect, $matches);
+        $extraAliases = $matches[1] ?? [];
+    }
+    // Build select columns - prefix with table name if there's a JOIN to avoid ambiguity
+    // but don't prefix extra_select alias columns
+    $selColsArr = [];
+    foreach ($cols as $c) {
+        if ($extraFrom !== '' && !in_array($c, $extraAliases) && strpos($c, '.') === false && stripos($c, ' AS ') === false) {
+            $selColsArr[] = '`' . $mainTable . '`.`' . $c . '`';
+        } else {
+            $selColsArr[] = '`' . $c . '`';
+        }
+    }
+    $selCols = implode(', ', $selColsArr);
+    if ($extraSelect !== '') {
+        $selCols .= ' ' . $extraSelect;
+    }
+    $rows = fetchAll("SELECT $selCols FROM `".$mainTable."` $extraFrom WHERE $where ORDER BY $orderBy", $params);
 
     $dispTitle = lang()==='ar' ? $titleAr : $title;
     echo '<div class="d-flex justify-content-between align-items-center mb-3">
@@ -323,7 +416,11 @@ function run_table_module($cfg) {
         echo '<thead class="table-dark"><tr>';
         foreach ($displayCols as $c) {
             $th = $c;
-            foreach ($fields as $fd) { if ($fd['name']===$c) { $th = (lang()==='ar' && !empty($fd['label_ar']) ? $fd['label_ar'] : $fd['label']); break; } }
+            if (isset($listLabels[$c])) {
+                $th = lang() === 'ar' ? ($listLabels[$c]['ar'] ?? $listLabels[$c]['en']) : $listLabels[$c]['en'];
+            } else {
+                foreach ($allFields as $fd) { if ($fd['name']===$c) { $th = (lang()==='ar' && !empty($fd['label_ar']) ? $fd['label_ar'] : $fd['label']); break; } }
+            }
             echo '<th>'.htmlspecialchars($th).'</th>';
         }
         echo '<th>Actions</th></tr></thead><tbody>';

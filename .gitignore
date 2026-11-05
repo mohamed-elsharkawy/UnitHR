@@ -1,0 +1,43 @@
+# UnitHR .gitignore
+
+# Environment & Config
+.env
+.env.local
+config.local.php
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+tmp/
+
+# Database
+*.sql.bak
+*.db
+
+# Uploaded files (if any)
+uploads/
+
+# PHP
+vendor/
+composer.lock
+
+# Node (if used)
+node_modules/
+
+# Sensitive files
+includes/config.local.php

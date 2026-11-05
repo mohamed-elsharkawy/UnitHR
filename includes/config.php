@@ -30,6 +30,8 @@ $_SESSION['appversion']     = '2.0.0';
 $_SESSION['appauthor']      = 'UnitHR Team';
 $_SESSION['appemail']       = 'hr@unithr.local';
 
+$_SESSION['devtool_disabled'] = 1;
+
 // Default language is Arabic per requirements ("fully in Arabic (Default Language)").
 if (empty($_SESSION['lang'])) {
     $_SESSION['lang'] = 'ar';

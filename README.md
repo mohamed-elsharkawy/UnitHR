@@ -119,6 +119,7 @@ UnitHR/
 |--------|-------------|
 | **Home** | Dashboard with statistics |
 | **Employees Main** | Employee records with NID auto-deduction |
+| **Employee Seniority** | Seniority tracking & promotion management |
 | **Employee Groups/Types/Degrees/Status** | Reference data management |
 | **Department Types/Structure** | Organization hierarchy |
 | **Leave Types/Balances/Requests** | Leave management with approval workflow |
@@ -159,9 +160,13 @@ Records are **never hard-deleted** — they are soft-omitted and versioned in `u
 
 All list pages support exporting to:
 - **CSV** — Comma-separated values
-- **XLSX** — Excel spreadsheet (via PhpSpreadsheet)
-- **Word (DOCX)** — Microsoft Word document
-- **PDF** — PDF document (via DomPDF)
+- **XLSX** — Excel spreadsheet (via PhpSpreadsheet + ZipStream)
+- **Word (DOCX)** — Microsoft Word document (built-in OOXML writer)
+- **PDF** — PDF document (via DomPDF + php-font-lib + php-svg-lib)
+
+All libraries are bundled offline in `assets/`; no Composer or internet access is required.
+
+Arabic PDF exports are fully supported: letters are converted to their contextual presentation forms and the table is laid out right-to-left (first column on the right, right-aligned text), while numbers, dates, and Latin names keep their natural order. English exports remain left-to-right.
 
 ## Security Features
 
@@ -194,6 +199,13 @@ ESS is accessible only to logged-in employees. Non-authenticated users are redir
 4. Rejected leaves show who rejected and when
 5. Approved leaves cannot be edited or deleted
 
+### Employee Seniority & Promotion
+- Seniority date calculated based on degree acquired date and interim period
+- Excess time in a degree carries over to the new degree upon promotion
+- Promotion eligibility checked: interim period elapsed + vacant next degree exists
+- Job groups: Specialized (Higher Education) and Technical & Clerical (Diploma)
+- Seniority management module with promotion workflow UI
+
 ## Configuration
 
 ### Environment Variables
@@ -216,7 +228,7 @@ ESS is accessible only to logged-in employees. Non-authenticated users are redir
 
 - **Backend:** PHP 7.4+, MySQL/MariaDB
 - **Frontend:** Bootstrap 5 (offline), Bootstrap Icons
-- **Libraries:** PhpSpreadsheet (XLSX), DomPDF (PDF), disable-devtool (security)
+- **Libraries:** PhpSpreadsheet + ZipStream (XLSX), DomPDF + php-font-lib + php-svg-lib (PDF), disable-devtool (security)
 - **Authentication:** TOTP (RFC 6238) via hash_hmac (SHA-1)
 - **QR Code:** Pure PHP implementation (no GD required)
 
