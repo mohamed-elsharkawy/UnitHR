@@ -4,9 +4,15 @@
  */
 $moduleInfo = [
     'name'        => 'Employee Degrees',
-    'description' => 'Manage employee degrees/grades with interim periods and requirements.',
-    'version'     => '2.0.0',
+    'name_ar'    => 'الدرجات الوظيفية',
+    'description' => 'Manage employee degrees/grades with interim periods and requirements, assigned to employee groups.',
+    'description_ar' => 'إدارة الدرجات الوظيفية مع فترات الانتقال والمتطلبات، مرتبطة بمجموعات الموظفين.',
+    'version'     => '2.3.0',
     'author'      => 'UnitHR Team',
     'icon'        => 'bi bi-award',
+    'group'       => 'Employees',
+    'group_ar'    => 'الموظفون',
+    'group_order' => 3,
+    'order'       => 40,
     'enabled'     => true,
 ];

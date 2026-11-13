@@ -40,6 +40,38 @@ function msg($m) {
     }
 }
 
+// Database creation choice (browser only): create new DB or use existing
+$dbChoice = '';
+if (!$isCli) {
+    $dbChoice = $_REQUEST['db_choice'] ?? '';
+    if ($dbChoice === '') {
+        // Show choice form
+        echo '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>UnitHR Installer</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>body{background:#f8f9fa;font-family:"Segoe UI",Tahoma,Geneva,Verdana,sans-serif}.installer-card{max-width:600px;margin:60px auto}</style>
+</head><body><div class="container"><div class="installer-card"><div class="card shadow"><div class="card-header bg-primary text-white text-center py-3"><h3 class="mb-0">UnitHR Database Installer</h3><small>Choose how to set up the database</small></div><div class="card-body p-4">
+<form method="post" action="install.php">
+<div class="mb-3">
+  <div class="form-check mb-2">
+    <input class="form-check-input" type="radio" name="db_choice" id="c1" value="create" checked>
+    <label class="form-check-label" for="c1"><strong>Create database</strong> — create a new database and all tables (recommended for fresh installs).</label>
+  </div>
+  <div class="form-check">
+    <input class="form-check-input" type="radio" name="db_choice" id="c2" value="existing">
+    <label class="form-check-label" for="c2"><strong>Database already exists</strong> — use an existing database; only create missing tables, skip seeding if data present.</label>
+  </div>
+</div>
+<button type="submit" class="btn btn-primary w-100">Continue</button>
+</form></div></div></div></body></html>';
+        exit;
+    }
+}
+if ($isCli) {
+    $dbChoice = 'create';
+}
+$createDb = ($dbChoice === 'create');
+
 if (!$isCli) {
     // HTML header with progress bar
     echo '<!DOCTYPE html>
@@ -83,7 +115,7 @@ if (!$isCli) {
                 </div>
                 <div class="install-log" id="installLog"></div>
                 <div class="text-center mt-3" id="completionArea" style="display: none;">
-                    <a href="index.php" class="btn btn-success btn-lg"><i class="bi bi-box-arrow-in-right me-2"></i>Go to Application</a>
+                    <a href="" class="btn btn-success btn-lg"><i class="bi bi-box-arrow-in-right me-2"></i>Go to Application</a>
                 </div>
             </div>
         </div>
@@ -131,11 +163,13 @@ try {
     $pdo = new PDO("mysql:host=".app('dbhost').";port=".app('dbport')."", app('dbuser'), app('dbpass'),
         [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
     
-    step('Creating database...', function() use ($pdo, $DB) {
-        $pdo->exec("CREATE DATABASE IF NOT EXISTS `$DB` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+    step('Preparing database...', function() use ($pdo, $DB, $createDb) {
+        if ($createDb) {
+            $pdo->exec("CREATE DATABASE IF NOT EXISTS `$DB` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
+        }
         $pdo->exec("USE `$DB`");
     });
-    msg("Database `$DB` ready.");
+    msg("Database `$DB` ready (" . ($createDb ? 'created' : 'existing') . ").");
 
     step('Reading schema file...', function() {});
     $sql = file_get_contents(__DIR__ . '/schema.sql');
@@ -162,7 +196,7 @@ try {
         progress_bar(100, 'Complete!');
         if (!$isCli) {
             echo '<script>document.getElementById("completionArea").style.display = "block";</script>';
-            echo '<br><a href="index.php" class="btn btn-success btn-lg"><i class="bi bi-box-arrow-in-right me-2"></i>Go to Application</a>';
+            echo '<br><a href="" class="btn btn-success btn-lg"><i class="bi bi-box-arrow-in-right me-2"></i>Go to Application</a>';
         }
         exit;
     }
@@ -280,18 +314,54 @@ try {
     });
     msg("SuperAdmin user created.");
 
-    step('Creating permissions...', function() use ($pdo, $P) {
-        $modules = ['appmodules','deptypes','depstructure','users','permissions','accesslog','employeesgroup','employeestypes','leavestypes','empdegrees','empstatus','retireplan','fiscalyears','employeesmain','leavesbalances','empleaves','reports','ess'];
-        $modAr = ['appmodules'=>'وحدات التطبيق','deptypes'=>'أنواع الأقسام','depstructure'=>'هيكلة الأقسام','users'=>'المستخدمون','permissions'=>'الصلاحيات','accesslog'=>'سجل الدخول','employeesgroup'=>'مجموعات الموظفين','employeestypes'=>'أنواع الموظفين','leavestypes'=>'أنواع الإجازات','empdegrees'=>'الدرجات الوظيفية','empstatus'=>'الحالة الوظيفية','retireplan'=>'خطة التقاعد','fiscalyears'=>'السنة المالية','employeesmain'=>'الموظفون الرئيسيون','leavesbalances'=>'أرصدة الإجازات','empleaves'=>'إجازات الموظفين','reports'=>'التقارير','ess'=>'خدمة الموظف الذاتية'];
-        $permId = null;
-        foreach ($modules as $m) {
-            $pdo->prepare("INSERT INTO `{$P}permissions` (rguid, modulename, modulenamear, isadmin, canadd, canedit, candel, ishradmin, ishruser, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,1,1,1,1,1,1,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([bin2hex(random_bytes(16)), $m, $modAr[$m] ?? $m]);
-            $r = $pdo->query("SELECT LAST_INSERT_ID()")->fetchColumn();
-            if ($permId === null) $permId = (int)$r;
-        }
-        $pdo->prepare("UPDATE `{$P}users` SET permissionid = ? WHERE username = 'admin'")->execute([$permId]);
+    step('Creating user_permissions table...', function() use ($pdo, $P) {
+        $pdo->exec("CREATE TABLE IF NOT EXISTS `{$P}user_permissions` (
+          `id` bigint NOT NULL AUTO_INCREMENT,
+          `rguid` varchar(200) COLLATE utf8mb4_unicode_ci NOT NULL,
+          `user_id` bigint NOT NULL,
+          `permission_id` bigint NOT NULL,
+          `dtadded` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          `addedbyid` bigint DEFAULT NULL,
+          `addedby` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+          `addedbyname` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+          `addedbynamear` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+          `lastedit` timestamp NULL DEFAULT NULL ON UPDATE CURRENT_TIMESTAMP,
+          `editedbyid` bigint DEFAULT NULL,
+          `editedby` varchar(50) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+          `editedbyname` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+          `editedbynamear` varchar(200) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+          `omitted` tinyint(1) NOT NULL DEFAULT '0',
+          PRIMARY KEY (`id`),
+          UNIQUE KEY `user_perm` (`user_id`, `permission_id`),
+          KEY `user_id` (`user_id`),
+          KEY `permission_id` (`permission_id`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci");
     });
-    msg("Permissions created and linked to SuperAdmin.");
+    msg("user_permissions table created.");
+
+    step('Creating permissions...', function() use ($pdo, $P) {
+        $modules = ['home','appmodules','deptypes','depstructure','users','permissions','accesslog','notifications','employeesgroup','employeestypes','leavestypes','holidays','empdegrees','empstatus','retireplan','fiscalyears','employeesmain','leavesbalances','empleaves','reports','ess','attendance','attpermissions','disciplinary','emppromotions','documenttypes','emparchives'];
+        $modAr = ['home'=>'لوحة التحكم','appmodules'=>'وحدات التطبيق','deptypes'=>'أنواع الأقسام','depstructure'=>'هيكلة الأقسام','users'=>'المستخدمون','permissions'=>'الصلاحيات','accesslog'=>'سجل الدخول','notifications'=>'الإشعارات','employeesgroup'=>'مجموعات الموظفين','employeestypes'=>'أنواع الموظفين','leavestypes'=>'أنواع الإجازات','holidays'=>'العطلات الرسمية','empdegrees'=>'الدرجات الوظيفية','empstatus'=>'الحالة الوظيفية','retireplan'=>'خطة التقاعد','fiscalyears'=>'السنة المالية','employeesmain'=>'الموظفون الرئيسيون','leavesbalances'=>'أرصدة الإجازات','empleaves'=>'إجازات الموظفين','reports'=>'التقارير','ess'=>'خدمة الموظف الذاتية','attendance'=>'الحضور والانصراف','attpermissions'=>'إذونات الحضور','disciplinary'=>'جزاءات الموظفين','emppromotions'=>'ترقية موظف','documenttypes'=>'نوع المستند','emparchives'=>'أرشيف الموظفين'];
+        $adminId = null;
+        $permId = null;
+        $u = $pdo->query("SELECT id FROM `{$P}users` WHERE username = 'admin' AND omitted = 0 LIMIT 1")->fetch();
+        if ($u) $adminId = (int)$u['id'];
+        $an = 'System';
+        $now = date('Y-m-d H:i:s');
+        foreach ($modules as $m) {
+            $rguid = bin2hex(random_bytes(16));
+            $pdo->prepare("INSERT IGNORE INTO `{$P}permissions` (rguid, modulename, modulenamear, isadmin, canadd, canedit, candel, ishradmin, ishruser, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,1,1,1,1,1,1,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([$rguid, $m, $modAr[$m] ?? $m]);
+            $stmt = $pdo->prepare("SELECT id FROM `{$P}permissions` WHERE modulename = ? AND omitted = 0 LIMIT 1");
+            $stmt->execute([$m]);
+            $r = $stmt->fetch();
+            $pid = (int)$r['id'];
+            if ($adminId && $pid) {
+                $pdo->prepare("INSERT IGNORE INTO `{$P}user_permissions` (rguid, user_id, permission_id, dtadded, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,NOW(),?,?,?,?,NOW(),?,?,?,?,0)")->execute([bin2hex(random_bytes(16)), $adminId, $pid, 1, 'System', 'System', 'نظام', 1, 'System', 'System', 'نظام']);
+            }
+            if ($permId === null) $permId = $pid;
+        }
+    });
+    msg("Permissions created and linked to SuperAdmin via user_permissions.");
 
     step('Finalizing...', function() {});
     progress_bar(100, 'Installation Complete!');
@@ -306,7 +376,7 @@ try {
 } catch (PDOException $e) {
     progress_bar(100, 'Error!');
     msg("ERROR: " . $e->getMessage());
-    if (!$isCli) echo '<br><a href="index.php" class="btn btn-secondary">Go to app</a>';
+    if (!$isCli) echo '<br><a href="" class="btn btn-secondary">Go to app</a>';
 }
 
 if (!$isCli) {

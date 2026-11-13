@@ -4,12 +4,12 @@
  * Two tabs: Employees (default) and Admins
  */
 $isAr = lang() === 'ar';
-$error = $_SESSION['login_error'] ?? '';
-unset($_SESSION['login_error']);
-$otpRequired = !empty($_SESSION['otp_required']);
-unset($_SESSION['otp_required']);
-$otpSetup = !empty($_SESSION['otp_setup_required']);
-unset($_SESSION['otp_setup_required']);
+$error = $_SESSION[UHR_SESSION_KEY]['login_error'] ?? '';
+unset($_SESSION[UHR_SESSION_KEY]['login_error']);
+$otpRequired = !empty($_SESSION[UHR_SESSION_KEY]['otp_required']);
+unset($_SESSION[UHR_SESSION_KEY]['otp_required']);
+$otpSetup = !empty($_SESSION[UHR_SESSION_KEY]['otp_setup_required']);
+unset($_SESSION[UHR_SESSION_KEY]['otp_setup_required']);
 
 // Determine which tab to show
 $activeTab = 'employees';
@@ -19,16 +19,16 @@ if ($otpRequired || $otpSetup) {
 ?>
 <div class="row justify-content-center">
     <div class="col-md-6 col-lg-5">
-        <div class="card shadow">
+        <div class="card shadow w3-animate-top">
             <div class="card-body p-4">
                 <div class="text-center mb-4">
-                    <img src="<?= htmlspecialchars(app('applogo')) ?>" alt="Logo" width="51" height="48" class="mb-2" onerror="this.style.display='none'">
+                    <img src="<?= htmlspecialchars(app('applogo')) ?>" alt="Logo" width="65" height="48" class="mb-2 raised-box" onerror="this.style.display='none'">
                     <h2 class="card-title"><?= htmlspecialchars(app('appname')) ?></h2>
                     <p class="text-muted"><?= htmlspecialchars(app('appname')) ?> - HR Management Solution</p>
                 </div>
 
                 <?php if ($error): ?>
-                <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
+                <div class="alert alert-danger w3-animate-top"><?= htmlspecialchars($error) ?></div>
                 <?php endif; ?>
 
                 <!-- Login Tabs -->
@@ -48,7 +48,7 @@ if ($otpRequired || $otpSetup) {
                 <div class="tab-content" id="loginTabContent">
                     <!-- Employees Login Tab (default) -->
                     <div class="tab-pane fade <?= $activeTab === 'employees' ? 'show active' : '' ?>" id="employees" role="tabpanel">
-                        <form action="index.php?action=login" method="post" novalidate>
+                        <form action="?action=login" method="post" novalidate>
                             <div class="mb-3">
                                 <label class="form-label"><?= $isAr ? 'اسم المستخدم / البريد الإلكتروني' : 'Username / Email' ?></label>
                                 <input type="text" name="login" class="form-control" required autofocus>
@@ -68,7 +68,7 @@ if ($otpRequired || $otpSetup) {
 
                     <!-- Admins Login Tab -->
                     <div class="tab-pane fade <?= $activeTab === 'admins' ? 'show active' : '' ?>" id="admins" role="tabpanel">
-                        <form action="index.php?action=login" method="post" novalidate>
+                        <form action="?action=login" method="post" novalidate>
                             <div class="mb-3">
                                 <label class="form-label"><?= $isAr ? 'اسم المستخدم / البريد الإلكتروني' : 'Username / Email' ?></label>
                                 <input type="text" name="login" class="form-control" required>

@@ -12,8 +12,13 @@ function get_routes() {
     foreach ($modules as $module) {
         $routes[] = [
             'name'        => $module['name'],
+            'name_ar'     => $module['name_ar'] ?? $module['name'],
+            'icon'        => $module['icon'] ?? '',
             'folder'      => $module['folder'],
             'description' => $module['description'] ?? '',
+            'group'       => $module['group'] ?? '',
+            'group_ar'    => $module['group_ar'] ?? ($module['group'] ?? ''),
+            'order'       => $module['order'] ?? 999,
             'url'         => '?module=' . $module['folder'],
             'enabled'     => $module['enabled'] ?? true,
         ];

@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 /**
  * Employee Self-Service (ESS) - Login required.
  * Employees access their own data using login credentials.
@@ -6,6 +8,8 @@
  */
 require_login();
 require_once __DIR__ . '/../../includes/helpers.php';
+require_once __DIR__ . '/../../includes/leave_rules.php';
+require_once __DIR__ . '/../../includes/attendance.php';
 $isAr = lang() === 'ar';
 
 $u = current_user();
@@ -25,7 +29,7 @@ if (!$isAdmin) {
 }
 
 // ---------- Leave request (POST) ----------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['empid'])) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['empid']) && empty($_POST['leave_action']) && empty($_POST['attendance_permission_action'])) {
     $empid = (int)$_POST['empid'];
     $ltid = (int)($_POST['leavetypeid'] ?? 0);
     $start = trim($_POST['startfrom'] ?? '');
@@ -34,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['empid'])) {
         $own = fetchRow("SELECT id FROM " . table('employeesmain') . " WHERE nid=? AND omitted=0 LIMIT 1", [$u['username'] ?? '']);
         if (!$own || (int)$own['id'] !== $empid) {
             set_flash('error', 'You can only submit leave requests for your own record.');
-            header('Location: index.php?module=ess');
+            header('Location: ?module=ess');
             exit;
         }
     }
@@ -49,100 +53,113 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['empid'])) {
         $errors[] = 'End date cannot be older than start date.';
     }
     if (empty($errors)) {
-        $fy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 AND ? BETWEEN fstartdate AND fenddate LIMIT 1", [$start]);
-        $fy2 = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 AND ? BETWEEN fstartdate AND fenddate LIMIT 1", [$end]);
-        if (!$fy || !$fy2 || $fy['id'] !== $fy2['id']) {
-            $errors[] = 'Leave period cannot span between two fiscal years.';
+        // Apply the leave-type rules: fiscal year, quotas, weekends, holidays
+        // and balance (including days already reserved by pending requests).
+        $check = leave_evaluate_request($empid, $ltid, $start, $end, 0);
+        if (!$check['ok']) {
+            $errors = array_merge($errors, $check['errors']);
         } else {
-            $lt = fetchRow("SELECT incwe, leavetypename, leavetypenamear FROM " . table('leavestypes') . " WHERE id=? LIMIT 1", [$ltid]);
-            $days = 0;
-            $s = strtotime($start); $e = strtotime($end);
-            for ($d = $s; $d <= $e; $d = strtotime('+1 day', $d)) {
-                $w = (int)date('w', $d);
-                if (!$lt['incwe'] && ($w === 0 || $w === 6)) { continue; }
-                $days++;
-            }
-            $bal = fetchRow("SELECT remainingbalance FROM " . table('leavesbalances') . " WHERE empid=? AND fiscalyearid=? AND leavetypeid=? AND omitted=0 LIMIT 1", [$empid, $fy['id'], $ltid]);
-            $remaining = (int)($bal['remainingbalance'] ?? 0);
-            if ($days > $remaining) {
-                $errors[] = 'Not enough leave balance.';
+            $lt = $check['leaveType'];
+            $remaining = $check['remaining'];
+            $days = $check['days'];
+            $balanceBefore = $remaining;
+            // Show the projected balance immediately, even while pending.
+            $balanceAfter = max(0, $remaining - $days);
+            $supId = (int)($emp['empsuperiorid'] ?? 0);
+            $supName = $emp['empsuperiorname'] ?? '';
+            $supNameAr = $emp['empsuperiornamear'] ?? '';
+            $now = date('Y-m-d H:i:s');
+            $insRes = q("INSERT INTO " . table('empleaves') . "
+                (rguid, empid, empfullname, empfullnamear, leavetypeid, leavetypename, leavetypenamear,
+                 startfrom, endon, balancebefore, balanceafter, isapproved, empsuperiorid,
+                 empsuperiorname, empsuperiornamear, dtadded, addedbyid, addedby,
+                 addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname,
+                 editedbynamear)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [bin2hex(random_bytes(16)), $empid, $emp['empfullname'], $emp['empfullnamear'],
+                 $ltid, $lt['leavetypename'], $lt['leavetypenamear'],
+                 $start, $end, $balanceBefore, $balanceAfter, 0, $supId ?: null, $supName, $supNameAr,
+                 $now, $empid, $emp['empfullname'], $emp['empfullname'], $emp['empfullnamear'],
+                 $now, $empid, $emp['empfullname'], $emp['empfullname'], $emp['empfullnamear']]);
+            if (!$insRes) {
+                set_flash('error', 'DB insert failed: ' . ($_SESSION[UHR_SESSION_KEY]['db_error'] ?? 'unknown'));
             } else {
-                $now = date('Y-m-d H:i:s');
-                $insRes = q("INSERT INTO " . table('empleaves') . "
-                    (rguid, empid, empfullname, empfullnamear, leavetypeid, leavetypename, leavetypenamear,
-                     startfrom, endon, balancebefore, balanceafter, isapproved, empsuperiorid,
-                     empsuperiorname, empsuperiornamear, dtadded, addedbyid, addedby,
-                     addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname,
-                     editedbynamear)
-                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                    [bin2hex(random_bytes(16)), $empid, $emp['empfullname'], $emp['empfullnamear'],
-                     $ltid, $lt['leavetypename'], $lt['leavetypenamear'],
-                     $start, $end, $remaining, $remaining, 0, 0, '', '',
-                     $now, $empid, $emp['empfullname'], $emp['empfullname'], $emp['empfullnamear'],
-                     $now, $empid, $emp['empfullname'], $emp['empfullname'], $emp['empfullnamear']]);
-                if (!$insRes) { set_flash('error', 'DB insert failed: ' . ($_SESSION['db_error'] ?? 'unknown')); }
-                else { set_flash('success', 'Leave request submitted and is pending approval.'); }
-                header('Location: index.php?module=ess&step=view&nid=' . urlencode($emp['nid']));
-                exit;
+                $leaveId = (int)lastInsertId();
+                notify_leave_submitted($leaveId, $emp, $lt, $start, $end, $days);
+                set_flash('success', 'Leave request submitted and is pending approval.');
             }
+            header('Location: ?module=ess&step=view&nid=' . urlencode($emp['nid']));
+            exit;
         }
     }
     if (!empty($errors)) { foreach ($errors as $err) { set_flash('error', $err); } }
 }
 
-// ---------- APPROVE/REJECT LEAVE (POST) ----------
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['leave_action']) && !empty($_POST['leave_id'])) {
-    $leaveId = (int)$_POST['leave_id'];
-    $leaveAction = $_POST['leave_action']; // 'approve' or 'reject'
-    $leave = fetchRow("SELECT * FROM " . table('empleaves') . " WHERE id=? AND omitted=0 LIMIT 1", [$leaveId]);
-    
-    if ($leave && empty($leave['isapproved'])) {
-        $empid = (int)$leave['empid'];
-        $employee = fetchRow("SELECT * FROM " . table('employeesmain') . " WHERE id=? AND omitted=0 LIMIT 1", [$empid]);
-        
-        // Check if current user is the superior
-        $currentEmpId = $isAdmin ? null : (int)($emp['id'] ?? 0);
-        $isSuperior = $isAdmin || ($currentEmpId && $employee && (int)$employee['empsuperiorid'] === $currentEmpId);
-        
-        if ($isSuperior) {
-            $now = date('Y-m-d H:i:s');
-            $an = $u['username_ar'] ?? $u['username'];
-            
-            if ($leaveAction === 'approve') {
-                // Approve: deduct from balance
-                $fy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 AND ? BETWEEN fstartdate AND fenddate LIMIT 1", [$leave['startfrom']]);
-                if ($fy) {
-                    $lt = fetchRow("SELECT incwe, incholidays FROM " . table('leavestypes') . " WHERE id=? LIMIT 1", [$leave['leavetypeid']]);
-                    $days = 0;
-                    $s = strtotime($leave['startfrom']); $e = strtotime($leave['endon']);
-                    for ($d = $s; $d <= $e; $d = strtotime('+1 day', $d)) {
-                        $w = (int)date('w', $d);
-                        if (!($lt['incwe'] ?? 0) && ($w === 0 || $w === 6)) continue;
-                        $days++;
-                    }
-                    // Deduct from balance
-                    q("UPDATE " . table('leavesbalances') . " SET usedbalance = usedbalance + ?, remainingbalance = remainingbalance - ?, lastedit=?, editedbyid=?, editedby=?, editedbyname=?, editedbynamear=? WHERE empid=? AND fiscalyearid=? AND leavetypeid=? AND omitted=0",
-                        [$days, $days, $now, $u['id'], $u['username'], $an, $an, $empid, $fy['id'], $leave['leavetypeid']]);
-                }
-                q("UPDATE " . table('empleaves') . " SET isapproved = 1, balanceafter = balancebefore - ?, lastedit=?, editedbyid=?, editedby=?, editedbyname=?, editedbynamear=? WHERE id = ?",
-                    [$days ?? 0, $now, $u['id'], $u['username'], $an, $an, $leaveId]);
-                set_flash('success', $isAr ? 'تمت الموافقة على الإجازة.' : 'Leave approved.');
-            } elseif ($leaveAction === 'reject') {
-                $rejectReason = trim($_POST['reject_reason'] ?? '');
-                q("UPDATE " . table('empleaves') . " SET isapproved = 0, rejectedbyid = ?, rejectedby = ?, rejectedbyname = ?, rejectedbynamear = ?, rejectedat = ?, lastedit=?, editedbyid=?, editedby=?, editedbyname=?, editedbynamear=? WHERE id = ?",
-                    [$u['id'], $u['username'], $an, $an, $now, $now, $u['id'], $u['username'], $an, $an, $leaveId]);
-                set_flash('success', $isAr ? 'تم رفض الإجازة.' : 'Leave rejected.');
-            }
-            header('Location: index.php?module=ess&step=view&nid=' . urlencode($employee['nid'] ?? '')); exit;
-        } else {
-            set_flash('error', $isAr ? 'ليس لديك صلاحية للموافقة على هذه الإجازة.' : 'You do not have permission to approve this leave.');
+// ---------- Attendance Permission request (POST) ----------
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['attendance_permission_action']) && $_POST['attendance_permission_action'] === 'submit') {
+    $empid = (int)$_POST['empid'];
+    $ltid = (int)($_POST['leavetypeid'] ?? 0);
+    $start = trim($_POST['startfrom'] ?? '');
+    $end = trim($_POST['endon'] ?? '');
+    if (!$isAdmin) {
+        $own = fetchRow("SELECT id FROM " . table('employeesmain') . " WHERE nid=? AND omitted=0 LIMIT 1", [$u['username'] ?? '']);
+        if (!$own || (int)$own['id'] !== $empid) {
+            set_flash('error', 'You can only submit leave requests for your own record.');
+            header('Location: ?module=ess');
+            exit;
         }
     }
-}
-
-// If no employee resolved yet, try by empid (for redirect after request)
-if (!$emp && !empty($_GET['empid'])) {
-    $emp = fetchRow("SELECT * FROM " . table('employeesmain') . " WHERE id=? AND omitted=0 LIMIT 1", [(int)$_GET['empid']]);
+    $emp = fetchRow("SELECT * FROM " . table('employeesmain') . " WHERE id=? AND omitted=0 LIMIT 1", [$empid]);
+    $leavetypes = fetchAll("SELECT * FROM " . table('leavestypes') . " WHERE omitted=0 ORDER BY leavetypename ASC");
+    $fyears = fetchAll("SELECT id, fstartdate, fenddate FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC");
+    $errors = [];
+    if (!$emp) { $errors[] = 'Employee not found.'; }
+    if ($ltid === 0) { $errors[] = 'Leave type is required.'; }
+    if ($start === '' || $end === '') { $errors[] = 'Start and end dates are required.'; }
+    if ($start !== '' && $end !== '' && strtotime($end) < strtotime($start)) {
+        $errors[] = 'End date cannot be older than start date.';
+    }
+    if (empty($errors)) {
+        // Apply the leave-type rules: fiscal year, quotas, weekends, holidays
+        // and balance (including days already reserved by pending requests).
+        $check = leave_evaluate_request($empid, $ltid, $start, $end, 0);
+        if (!$check['ok']) {
+            $errors = array_merge($errors, $check['errors']);
+        } else {
+            $lt = $check['leaveType'];
+            $remaining = $check['remaining'];
+            $days = $check['days'];
+            $balanceBefore = $remaining;
+            // Show the projected balance immediately, even while pending.
+            $balanceAfter = max(0, $remaining - $days);
+            $supId = (int)($emp['empsuperiorid'] ?? 0);
+            $supName = $emp['empsuperiorname'] ?? '';
+            $supNameAr = $emp['empsuperiornamear'] ?? '';
+            $now = date('Y-m-d H:i:s');
+            $insRes = q("INSERT INTO " . table('empleaves') . "
+                (rguid, empid, empfullname, empfullnamear, leavetypeid, leavetypename, leavetypenamear,
+                 startfrom, endon, balancebefore, balanceafter, isapproved, empsuperiorid,
+                 empsuperiorname, empsuperiornamear, dtadded, addedbyid, addedby,
+                 addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname,
+                 editedbynamear)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                [bin2hex(random_bytes(16)), $empid, $emp['empfullname'], $emp['empfullnamear'],
+                 $ltid, $lt['leavetypename'], $lt['leavetypenamear'],
+                 $start, $end, $balanceBefore, $balanceAfter, 0, $supId ?: null, $supName, $supNameAr,
+                 $now, $empid, $emp['empfullname'], $emp['empfullname'], $emp['empfullnamear'],
+                 $now, $empid, $emp['empfullname'], $emp['empfullname'], $emp['empfullnamear']]);
+            if (!$insRes) {
+                set_flash('error', 'DB insert failed: ' . ($_SESSION[UHR_SESSION_KEY]['db_error'] ?? 'unknown'));
+            } else {
+                $leaveId = (int)lastInsertId();
+                notify_leave_submitted($leaveId, $emp, $lt, $start, $end, $days);
+                set_flash('success', 'Leave request submitted and is pending approval.');
+            }
+            header('Location: ?module=ess&step=view&nid=' . urlencode($emp['nid']));
+            exit;
+        }
+    }
+    if (!empty($errors)) { foreach ($errors as $err) { set_flash('error', $err); } }
 }
 
 // ---------- VIEW: employee dashboard ----------
@@ -150,7 +167,17 @@ if ($emp) {
     $empid = (int)$emp['id'];
     $leavetypes = fetchAll("SELECT * FROM " . table('leavestypes') . " WHERE omitted=0 ORDER BY leavetypename ASC");
     $fyears = fetchAll("SELECT id, fstartdate, fenddate FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC");
-    $balances = fetchAll("SELECT * FROM " . table('leavesbalances') . " WHERE empid=? AND omitted=0 ORDER BY fstartdate DESC", [$empid]);
+    $currentFy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 AND ? BETWEEN fstartdate AND fenddate LIMIT 1", [date('Y-m-d')]);
+    if (!$currentFy) {
+        $currentFy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC LIMIT 1");
+    }
+    if (!$currentFy) {
+        $currentFy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC LIMIT 1");
+    }
+    $currentFyId = $currentFy ? (int)$currentFy['id'] : 0;
+    $balances = $currentFyId
+        ? fetchAll("SELECT * FROM " . table('leavesbalances') . " WHERE empid=? AND fiscalyearid=? AND omitted=0 ORDER BY leavetypename ASC", [$empid, $currentFyId])
+        : fetchAll("SELECT * FROM " . table('leavesbalances') . " WHERE empid=? AND omitted=0 ORDER BY fstartdate DESC", [$empid]);
     $leaves = fetchAll("SELECT * FROM " . table('empleaves') . " WHERE empid=? AND omitted=0 ORDER BY id DESC", [$empid]);
     
     // Check if this employee has subordinates (for leave approval)
@@ -162,77 +189,72 @@ if ($emp) {
     if ($hasSubordinates) {
         $subIds = array_column($subordinates, 'id');
         $placeholders = implode(',', array_fill(0, count($subIds), '?'));
-        $pendingLeaves = fetchAll("SELECT * FROM " . table('empleaves') . " WHERE empid IN ($placeholders) AND isapproved = 0 AND omitted = 0 ORDER BY id DESC", $subIds);
+        $pendingLeaves = fetchAll("SELECT * FROM " . table('empleaves') . " WHERE empid IN ($placeholders) AND isapproved = 0 AND rejectedat IS NULL AND omitted = 0 ORDER BY id DESC", $subIds);
     }
+    // Used in the request form to show which days count for this employee.
+    $empWorkdayNames = leave_workday_summary(leave_employee_workdays($empid));
     include __DIR__ . '/../../includes/header.php';
     ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-person-circle me-2"></i><?= htmlspecialchars($isAr ? $emp['empfullnamear'] : $emp['empfullname']) ?></h2>
     <div>
         <?php if ($isAdmin): ?>
-        <a href="index.php?module=employeesmain" class="btn btn-secondary me-2"><i class="bi bi-arrow-left me-1"></i><?= $isAr ? 'العودة' : 'Back' ?></a>
+        <a href="?module=employeesmain" class="btn btn-secondary me-2"><i class="bi bi-arrow-left me-1"></i><?= $isAr ? 'العودة' : 'Back' ?></a>
         <?php endif; ?>
-        <a href="index.php?action=logout" class="btn btn-danger"><i class="bi bi-box-arrow-right me-1"></i><?= $isAr ? 'تسجيل خروج' : 'Logout' ?></a>
+        <a href="?action=logout" class="btn btn-danger"><i class="bi bi-box-arrow-right me-1"></i><?= $isAr ? 'تسجيل خروج' : 'Logout' ?></a>
     </div>
 </div>
 <div class="row">
     <div class="col-md-4">
         <div class="card mb-3">
-            <div class="card-header"><?= $isAr ? 'بيانات الموظف' : 'Employee Details' ?></div>
             <div class="card-body">
-                <p><strong><?= $isAr ? 'الاسم' : 'Name' ?>:</strong> <?= htmlspecialchars($isAr ? $emp['empfullnamear'] : $emp['empfullname']) ?></p>
+                <!-- <p><strong><?= $isAr ? 'الاسم' : 'Name' ?>:</strong> <?= htmlspecialchars($isAr ? $emp['empfullnamear'] : $emp['empfullname']) ?></p> -->
                 <p><strong><?= $isAr ? 'الرقم القومي' : 'National ID' ?>:</strong> <?= htmlspecialchars($emp['nid']) ?></p>
                 <p><strong><?= $isAr ? 'البريد الإلكتروني' : 'Email' ?>:</strong> <?= htmlspecialchars($emp['email'] ?? '') ?></p>
                 <p><strong><?= $isAr ? 'اسم المستخدم (تسجيل الدخول)' : 'Login Username' ?>:</strong> <?= htmlspecialchars($emp['nid']) ?></p>
-                <p><strong><?= $isAr ? 'النوع' : 'Gender' ?>:</strong> <?= htmlspecialchars($isAr ? ($emp['empgender'] === 'Male' ? 'ذكر' : 'أنثى') : ($emp['empgender'] ?? '')) ?></p>
-                <p><strong><?= $isAr ? 'القسم' : 'Department' ?>:</strong> <?= htmlspecialchars($emp['depname'] ?? '') ?></p>
-                <p><strong><?= $isAr ? 'الحالة الوظيفية' : 'Status' ?>:</strong> <?= htmlspecialchars($emp['empstatusname'] ?? '') ?></p>
-                <p><strong><?= $isAr ? 'الدرجة' : 'Degree' ?>:</strong> <?= htmlspecialchars($emp['currentdegreename'] ?? '') ?></p>
-                <p><strong><?= $isAr ? 'تاريخ الميلاد' : 'Date of Birth' ?>:</strong> <?= htmlspecialchars($emp['dop'] ?? '') ?></p>
+                <!--
+				<p><strong><?= $isAr ? 'النوع' : 'Gender' ?>:</strong> <?= htmlspecialchars($isAr ? ($emp['empgender'] === 'Male' ? 'ذكر' : 'أنثى') : ($emp['empgender'] ?? '')) ?></p>
+				-->
+                <p><strong><?= $isAr ? 'القسم' : 'Department' ?>:</strong> <?= htmlspecialchars($isAr ? $emp['depnamear'] : $emp['depname'] ?? '') ?></p>
+                <p><strong><?= $isAr ? 'الحالة الوظيفية' : 'Status' ?>:</strong> <?= htmlspecialchars($isAr ? $emp['empstatusnamear'] :$emp['empstatusname'] ?? '') ?></p>
+                <p><strong><?= $isAr ? 'الدرجة' : 'Degree' ?>:</strong> <?= htmlspecialchars($isAr ? $emp['currentdegreenamear'] : $emp['currentdegreename'] ?? '') ?></p>
+                <!--
+				<p><strong><?= $isAr ? 'تاريخ الميلاد' : 'Date of Birth' ?>:</strong> <?= htmlspecialchars($emp['dop'] ?? '') ?></p>
+                <hr class="my-3">
+				-->
             </div>
         </div>
-    </div>
-    <div class="col-md-4">
         <div class="card mb-3">
-            <div class="card-header"><?= $isAr ? 'أرصدة الإجازات' : 'Leave Balances' ?></div>
             <div class="card-body">
-                <?php if (count($balances) === 0): ?>
-                <p class="text-muted"><?= $isAr ? 'لا توجد أرصدة' : 'No balances' ?></p>
-                <?php else: ?>
-                <table class="table table-sm">
-                    <thead><tr><th><?= $isAr ? 'نوع الإجازة' : 'Leave Type' ?></th><th><?= $isAr ? 'السنة' : 'Year' ?></th><th><?= $isAr ? 'متبقي' : 'Remaining' ?></th></tr></thead>
-                    <tbody>
-                    <?php foreach ($balances as $b): ?>
-                    <tr>
-                        <td><?= htmlspecialchars($isAr ? $b['leavetypenamear'] : $b['leavetypename']) ?></td>
-                        <td><?= htmlspecialchars($b['fstartdate'] ?? '') ?></td>
-                        <td><?= (int)($b['remainingbalance'] ?? 0) ?></td>
-                    </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-                <?php endif; ?>
+				<p><strong><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></strong></p>
+				<a href="?action=change-password" class="btn btn-outline-secondary btn-sm ms-2"><?= $isAr ? 'تغيير كلمة المرور' : 'Change your Password' ?></a>
+                <!--
+				*** Remarked for a much easier approach ***
+				<form method="post" action="?module=ess&action=changepassword">
+                    <div class="mb-2">
+                        <label class="form-label"><?= $isAr ? 'كلمة المرور الحالية' : 'Current Password' ?></label>
+                        <input type="password" name="current_password" class="form-control" required autofocus>
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label"><?= $isAr ? 'كلمة المرور الجديدة' : 'New Password' ?></label>
+                        <input type="password" name="new_password" class="form-control" required minlength="6">
+                    </div>
+                    <div class="mb-2">
+                        <label class="form-label"><?= $isAr ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password' ?></label>
+                        <input type="password" name="confirm_password" class="form-control" required minlength="6">
+                    </div>
+                    <button class="btn btn-primary btn-sm"><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></button>
+                    <a href="?module=ess" class="btn btn-outline-secondary btn-sm ms-2"><?= $isAr ? 'إلغاء' : 'Cancel' ?></a>
+                </form>
+				-->
             </div>
         </div>
     </div>
-    <?php if (!$isAdmin): ?>
-<div class="col-md-4">
-        <div class="card mb-3">
-            <div class="card-header"><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></div>
-            <div class="card-body">
-                <p class="text-muted small"><?= $isAr ? 'تغيير كلمة المرور الخاصة بك' : 'Change your account password' ?></p>
-                <a href="index.php?action=change-password" class="btn btn-primary btn-sm">
-                    <i class="bi bi-key me-1"></i><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?>
-                </a>
-            </div>
-        </div>
-    </div>
-<?php endif; ?>
-    <div class="col-md-4">
+    <div class="col-md-4" id="leave_requests">
         <div class="card mb-3">
             <div class="card-header"><?= $isAr ? 'طلب إجازة جديدة' : 'Request Leave' ?></div>
             <div class="card-body">
-                <form method="post" action="index.php?module=ess&step=request">
+                <form method="post" action="?module=ess&step=request">
                     <input type="hidden" name="empid" value="<?= $empid ?>">
                     <div class="mb-2"><label class="form-label"><?= $isAr ? 'نوع الإجازة' : 'Leave Type' ?></label>
                         <select name="leavetypeid" class="form-select form-select-sm"><option value="">-- <?= $isAr ? 'اختر' : 'Select' ?> --</option>
@@ -242,6 +264,43 @@ if ($emp) {
                         <input type="date" name="startfrom" class="form-control form-control-sm"></div>
                         <div class="col-6 mb-2"><label class="form-label"><?= $isAr ? 'إلى' : 'To' ?></label>
                         <input type="date" name="endon" class="form-control form-control-sm"></div></div>
+                    <?php if (!empty($empWorkdayNames)): ?>
+                    <div class="form-text mb-2">
+                        <?= $isAr ? 'أيام العمل: ' : 'Working days: ' ?><strong><?= htmlspecialchars(implode($isAr ? '، ' : ', ', $empWorkdayNames)) ?></strong>
+                        <br><?= $isAr ? 'لا تُحتسب الأيام غير المذكورة في الإجازات التي لا تشمل عطلات نهاية الأسبوع.' : 'Days not listed are not counted for leave types that exclude weekends.' ?>
+                    </div>
+                    <?php endif; ?>
+                    <button class="btn btn-primary btn-sm"><?= $isAr ? 'إرسال الطلب' : 'Submit Request' ?></button>
+                </form>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4" id="attendance_permissions">
+        <div class="card mb-3">
+            <div class="card-header"><?= $isAr ? 'طلب إذن حضور' : 'Attendance Permission' ?></div>
+            <div class="card-body">
+                <form method="post" action="?module=ess">
+                    <input type="hidden" name="empid" value="<?= $empid ?>">
+                    <input type="hidden" name="attendance_permission_action" value="submit">
+                    <div class="mb-2"><label class="form-label"><?= $isAr ? 'نوع الإذن' : 'Permission Type' ?></label>
+                        <select name="permission_type" class="form-select form-select-sm" required>
+                            <option value="">-- <?= $isAr ? 'اختر' : 'Select' ?> --</option>
+                            <option value="EARLY_DEPARTURE"><?= $isAr ? 'إذن انصراف مبكر' : 'Early Departure' ?></option>
+                            <option value="LATE_ARRIVAL"><?= $isAr ? 'إذن حضور متأخر' : 'Late Arrival' ?></option>
+                            <option value="PERSONAL"><?= $isAr ? 'إذن شخصي' : 'Personal Permission' ?></option>
+                            <option value="OFFICIAL_BUSINESS"><?= $isAr ? 'إذن مصلحي' : 'Official Business' ?></option>
+                            <option value="WORK_ASSIGNMENT"><?= $isAr ? 'مأمورية' : 'Work Assignment' ?></option>
+                        </select></div>
+                    <div class="row"><div class="col-6 mb-2"><label class="form-label"><?= $isAr ? 'من' : 'From' ?></label>
+                        <input type="date" name="start_date" class="form-control form-control-sm"></div>
+                        <div class="col-6 mb-2"><label class="form-label"><?= $isAr ? 'إلى' : 'To' ?></label>
+                        <input type="date" name="end_date" class="form-control form-control-sm"></div></div>
+                    <div class="row"><div class="col-6 mb-2"><label class="form-label"><?= $isAr ? 'وقت البدء' : 'Start Time' ?></label>
+                        <input type="time" name="start_time" class="form-control form-control-sm"></div>
+                        <div class="col-6 mb-2"><label class="form-label"><?= $isAr ? 'وقت الانتهاء' : 'End Time' ?></label>
+                        <input type="time" name="end_time" class="form-control form-control-sm"></div></div>
+                    <div class="mb-2"><label class="form-label"><?= $isAr ? 'السبب' : 'Reason' ?></label>
+                        <textarea name="permission_reason" class="form-control" rows="2"></textarea></div>
                     <button class="btn btn-primary btn-sm"><?= $isAr ? 'إرسال الطلب' : 'Submit Request' ?></button>
                 </form>
             </div>
@@ -280,7 +339,7 @@ if ($emp) {
                 <td><?= htmlspecialchars($pl['endon']) ?></td>
                 <td><?= (int)($pl['balancebefore'] ?? 0) ?></td>
                 <td>
-                    <form method="post" action="index.php?module=ess&step=view&nid=<?= urlencode($emp['nid']) ?>" style="display:inline;">
+                    <form method="post" action="?module=ess&step=view&nid=<?= urlencode($emp['nid']) ?>" style="display:inline;">
                         <input type="hidden" name="leave_id" value="<?= $pl['id'] ?>">
                         <input type="hidden" name="leave_action" value="approve">
                         <input type="hidden" name="empid" value="<?= $pl['empid'] ?>">
@@ -299,7 +358,7 @@ if ($emp) {
                                     <h5 class="modal-title"><?= $isAr ? 'رفض الإجازة' : 'Reject Leave' ?></h5>
                                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                                 </div>
-                                <form method="post" action="index.php?module=ess&step=view&nid=<?= urlencode($emp['nid']) ?>">
+                                <form method="post" action="?module=ess&step=view&nid=<?= urlencode($emp['nid']) ?>">
                                     <div class="modal-body">
                                         <input type="hidden" name="leave_id" value="<?= $pl['id'] ?>">
                                         <input type="hidden" name="leave_action" value="reject">
@@ -308,23 +367,22 @@ if ($emp) {
                                             <label class="form-label"><?= $isAr ? 'سبب الرفض' : 'Rejection Reason' ?></label>
                                             <textarea name="reject_reason" class="form-control" rows="3"></textarea>
                                         </div>
-                                    </div>
-                                    <div class="modal-footer">
-                                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $isAr ? 'إلغاء' : 'Cancel' ?></button>
-                                        <button type="submit" class="btn btn-danger"><?= $isAr ? 'رفض' : 'Reject' ?></button>
-                                    </div>
-                                </form>
+                                        <div class="modal-footer">
+                                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><?= $isAr ? 'إلغاء' : 'Cancel' ?></button>
+                                            <button type="submit" class="btn btn-danger"><?= $isAr ? 'رفض' : 'Reject' ?></button>
+                                        </div>
+                                    </form>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-            </tbody>
-        </table>
+                    </td>
+                </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+            </div>
         </div>
     </div>
-</div>
 <?php endif; ?>
 
 <div class="card mt-3">
@@ -333,13 +391,21 @@ if ($emp) {
         <?php if (count($leaves) === 0): ?>
         <p class="text-muted"><?= $isAr ? 'لا توجد إجازات' : 'No leave records' ?></p>
         <?php else: ?>
-        <table class="table table-sm">
+        <table class="table table-sm table-fixed-height">
             <thead><tr><th><?= $isAr ? 'النوع' : 'Type' ?></th><th><?= $isAr ? 'من' : 'From' ?></th><th><?= $isAr ? 'إلى' : 'To' ?></th><th><?= $isAr ? 'الحالة' : 'Status' ?></th></tr></thead>
             <tbody>
             <?php foreach ($leaves as $l): ?>
-            <tr><td><?= htmlspecialchars($isAr ? $l['leavetypenamear'] : $l['leavetypename']) ?></td>
+            <tr>
                 <td><?= htmlspecialchars($l['startfrom']) ?></td><td><?= htmlspecialchars($l['endon']) ?></td>
-                <td><?= !empty($l['isapproved']) ? ($isAr ? 'موافق' : 'Approved') : ($isAr ? 'قيد الانتظار' : 'Pending') ?></td>
+                <td><?php
+                    if (!empty($l['isapproved'])) {
+                        echo $isAr ? 'موافق' : 'Approved';
+                    } elseif (!empty($l['rejectedat'])) {
+                        echo $isAr ? 'مرفوض' : 'Rejected';
+                    } else {
+                        echo $isAr ? 'قيد الانتظار' : 'Pending';
+                    }
+                ?></td>
             </tr>
             <?php endforeach; ?>
             </tbody>
@@ -348,64 +414,106 @@ if ($emp) {
     </div>
 </div>
 <?php
-    include __DIR__ . '/../../includes/footer.php';
-    exit;
-}
-
-// ---------- ADMIN LOOKUP (by NID) ----------
-if ($isAdmin) {
-    include __DIR__ . '/../../includes/header.php';
-    ?>
-<div class="row justify-content-center">
-    <div class="col-md-6 col-lg-5">
-        <div class="card shadow">
-            <div class="card-body p-4">
-                <div class="text-center mb-3">
-                    <h2 class="card-title"><i class="bi bi-person-circle me-2"></i><?= $isAr ? 'خدمة الموظف الذاتية' : 'Employee Self-Service' ?></h2>
-                </div>
-                <p class="text-center text-muted"><?= $isAr ? 'أدخل الرقم القومي للبحث عن موظف.' : 'Enter National ID to look up an employee.' ?></p>
-                <?php if ($nid !== '' && !$emp): ?>
-                <div class="alert alert-danger"><?= $isAr ? 'لم يتم العثور على موظف بهذا الرقم القومي.' : 'No employee found with this National ID.' ?></div>
-                <?php endif; ?>
-                <form method="get" action="index.php?module=ess">
-                    <input type="hidden" name="module" value="ess">
-                    <div class="mb-3">
-                        <label class="form-label"><?= $isAr ? 'الرقم القومي' : 'National ID' ?></label>
-                        <input type="text" name="nid" class="form-control" value="<?= htmlspecialchars($nid) ?>" maxlength="50" required autofocus>
-                    </div>
-                    <div class="d-grid">
-                        <button class="btn btn-primary btn-lg"><?= $isAr ? 'بحث' : 'Search' ?></button>
-                    </div>
-                </form>
-                <div class="text-center mt-3">
-                    <a href="index.php?action=logout" class="btn btn-outline-danger btn-sm"><?= $isAr ? 'تسجيل خروج' : 'Logout' ?></a>
-                </div>
-            </div>
-        </div>
+    if ($emp) {
+        $attFrom = date('Y-m-d', strtotime('-30 days'));
+        $attTo   = date('Y-m-d');
+        $attRows = fetchAll("SELECT * FROM " . table('daily_attendance') . " WHERE employee_id=? AND attendance_date BETWEEN ? AND ? AND omitted=0 ORDER BY attendance_date DESC", [$emp['id'], $attFrom, $attTo]);
+?>
+<div class="card mt-3" id="attendance_records">
+  <div class="card-header"><?= $isAr ? 'الحضور والانصراف (آخر 30 يوم)' : 'Attendance (last 30 days)' ?></div>
+  <div class="card-body">
+    <?php if (empty($attRows)): ?>
+      <p class="text-muted"><?= $isAr ? 'لا توجد سجلات' : 'No records' ?></p>
+    <?php else: ?>
+    <div class="table-responsive" style="max-height: 400px; overflow-y: auto;">
+    <table class="table table-sm table-fixed-height">
+      <thead><tr>
+        <th><?= $isAr?'التاريخ':'Date' ?></th>
+        <th><?= $isAr?'الحالة':'Status' ?></th>
+        <th><?= $isAr?'الدخول':'In' ?></th>
+        <th><?= $isAr?'الخروج':'Out' ?></th>
+        <th><?= $isAr?'تأخر':'Late' ?></th>
+        <th><?= $isAr?'إضافي':'OT' ?></th>
+      </tr></thead>
+      <tbody>
+      <?php foreach ($attRows as $ar): ?>
+      <tr>
+        <td><?= htmlspecialchars($ar['attendance_date']) ?></td>
+        <td><?= htmlspecialchars(attendance_status_label($ar['status_code'])) ?></td>
+        <td><?= htmlspecialchars($ar['first_punch'] ? date('H:i', strtotime($ar['first_punch'])) : '') ?></td>
+        <td><?= htmlspecialchars($ar['last_punch'] ? date('H:i', strtotime($ar['last_punch'])) : '') ?></td>
+        <td><?= (int)$ar['late_minutes'] ?></td>
+        <td><?= (int)$ar['total_overtime_minutes'] ?></td>
+      </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table>
     </div>
+    <?php endif; ?>
+  </div>
 </div>
+<?php
+    }
+?>
 <?php
     include __DIR__ . '/../../includes/footer.php';
     exit;
 }
 
-// ---------- NON-ADMIN WITHOUT EMPLOYEE RECORD ----------
+// ---------- VIEW: no employee resolved ----------
+// Arrives here when an admin opens the module without ?nid=, or when an
+// employee's record cannot be found (omitted/deleted). Always render a page
+// instead of an empty response.
+if ($isAdmin) {
+    $allemployees = fetchAll(
+        "SELECT id, nid, empfullname, empfullnamear FROM " . table('employeesmain') . "
+         WHERE omitted=0 ORDER BY empfullname ASC"
+    );
+    include __DIR__ . '/../../includes/header.php';
+    ?>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-person-circle me-2"></i><?= $isAr ? 'خدمة الموظف الذاتية' : 'Employee Self-Service' ?></h2>
+    <div>
+        <a href="?module=employeesmain" class="btn btn-secondary me-2"><i class="bi bi-arrow-left me-1"></i><?= $isAr ? 'العودة' : 'Back' ?></a>
+        <a href="?action=logout" class="btn btn-danger"><i class="bi bi-box-arrow-right me-1"></i><?= $isAr ? 'تسجيل خروج' : 'Logout' ?></a>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-header"><?= $isAr ? 'بحث عن موظف' : 'Employee Lookup' ?></div>
+    <div class="card-body">
+        <p class="text-muted mb-3"><?= $isAr ? 'اختر موظفاً حسب الرقم القومي لعرض صفحة الخدمة الذاتية الخاصة به.' : 'Select an employee by National ID to open their self-service page.' ?></p>
+        <form method="get" action="" class="row g-2 align-items-end">
+            <input type="hidden" name="module" value="ess">
+            <input type="hidden" name="step" value="view">
+            <div class="col-md-6 mb-2">
+                <label class="form-label"><?= $isAr ? 'الرقم القومي' : 'National ID' ?></label>
+                <select name="nid" class="form-select" required>
+                    <option value="">-- <?= $isAr ? 'اختر' : 'Select' ?> --</option>
+                    <?php foreach ($allemployees as $o): ?>
+                    <option value="<?= htmlspecialchars($o['nid']) ?>"><?= htmlspecialchars(($isAr ? $o['empfullnamear'] : $o['empfullname']) . ' - ' . $o['nid']) ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="col-auto mb-2">
+                <button class="btn btn-primary btn-sm"><?= $isAr ? 'عرض' : 'View' ?></button>
+            </div>
+        </form>
+    </div>
+</div>
+    <?php
+    include __DIR__ . '/../../includes/footer.php';
+    exit;
+}
+
 include __DIR__ . '/../../includes/header.php';
 ?>
-<div class="row justify-content-center">
-    <div class="col-md-6 col-lg-5">
-        <div class="card shadow">
-            <div class="card-body p-4">
-                <div class="alert alert-warning">
-                    <?= $isAr ? 'لم يتم العثور على سجل موظف مرتبط بحسابك. يرجى التواصل مع المسؤول.' : 'No employee record found for your account. Please contact the administrator.' ?>
-                </div>
-                <div class="text-center mt-3">
-                    <a href="index.php" class="btn btn-secondary me-2"><?= $isAr ? 'العودة' : 'Back' ?></a>
-                    <a href="index.php?action=logout" class="btn btn-danger"><?= $isAr ? 'تسجيل خروج' : 'Logout' ?></a>
-                </div>
-            </div>
-        </div>
-    </div>
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2><i class="bi bi-person-circle me-2"></i><?= $isAr ? 'خدمة الموظف الذاتية' : 'Employee Self-Service' ?></h2>
+    <a href="?action=logout" class="btn btn-danger"><i class="bi bi-box-arrow-right me-1"></i><?= $isAr ? 'تسجيل خروج' : 'Logout' ?></a>
+</div>
+<div class="alert alert-danger mb-0">
+    <?= $isAr ? 'لم يتم العثور على سجلك الوظيفي. يرجى الاتصال بإدارة الموارد البشرية.' : 'Your employee record was not found. Please contact HR.' ?>
 </div>
 <?php
 include __DIR__ . '/../../includes/footer.php';
+exit;

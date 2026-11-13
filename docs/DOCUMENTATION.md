@@ -9,9 +9,10 @@
 5. [CRUD Engine](#crud-engine)
 6. [NID Deduction](#nid-deduction)
 7. [Leave Management](#leave-management)
-8. [Export System](#export-system)
-9. [Security](#security)
-10. [Configuration](#configuration)
+8. [Notifications](#notifications)
+9. [Export System](#export-system)
+10. [Security](#security)
+11. [Configuration](#configuration)
 
 ---
 
@@ -25,8 +26,31 @@
 
 ### Module Discovery
 Modules are auto-discovered from the `modules/` folder. Each module has:
-- `info.php` — Module metadata (name, description, version, enabled)
+- `info.php` — Module metadata (name, description, version, enabled, group, order)
 - `index.php` — Module logic and rendering
+
+### Module Groups (Sidebar)
+Each `info.php` declares the sidebar group the module belongs to:
+
+```php
+$moduleInfo = [
+    'name'        => 'Employee Seniority',
+    'description' => 'Seniority tracking and promotion management.',
+    'group'       => 'Employees',  // group identifier
+    'order'       => 70,           // position inside the group
+    'enabled'     => true,
+];
+```
+
+`get_routes()` passes `group` and `order` through to `includes/header.php`, which calls `build_module_groups()` in `includes/modules.php`:
+
+- **create if missing** — a group identifier seen for the first time creates a new submenu group;
+- **append if existing** — later modules with the same identifier are added to that group;
+- modules are sorted by `order`, then by display name;
+- an empty or missing `group` falls back to **Other**;
+- known groups keep the preferred order, unknown groups follow alphabetically.
+
+Preferred group order: `Dashboard`, `Organization`, `Employees`, `Leaves`, `Administration`, `Fiscal`, `Reports`, `Self-Service – ESS`. Arabic group labels live in the `$groupNamesAr` map in `includes/header.php`. To move a module between groups, change only its `group` value; to reorder it, change `order`.
 
 ### Layout System
 - **Admin pages:** Sidebar + Navbar + Content + Footer
@@ -101,7 +125,7 @@ Complex modules (employeesmain, empleaves, leavesbalances, depstructure, ess) im
 Egyptian National ID format (14 digits):
 ```
 C YY MM DD SSSS G
-│ │  │  │  │    └── Gender (last 3 digits: odd=Male, even=Female)
+│ │  │  │  │    └── Gender (last 3 digits: even=Male, odd=Female)
 │ │  │  │  └─────── Serial number
 │ │  │  └────────── Day of birth
 │ │  └───────────── Month of birth
@@ -111,7 +135,7 @@ C YY MM DD SSSS G
 
 Auto-deduced fields:
 - **Date of Birth:** Century + YY-MM-DD (validated with checkdate)
-- **Gender:** Last 3 digits odd=Male, even=Female
+- **Gender:** Last 3 digits even=Male, odd=Female (applied on add and edit; the field is derived automatically and cannot be overridden)
 - **Retirement Date:** Birth date + service years (from retireplan table)
 
 ---
@@ -141,11 +165,33 @@ Configurable leave types with rules:
 - Rejection tracking (who and when)
 - Approved leaves cannot be edited/deleted
 
+#### Balance semantics
+| Stage | `empleaves.balancebefore` | `empleaves.balanceafter` | `leavesbalances` |
+|-------|---------------------------|--------------------------|------------------|
+| Submitted (pending) | live remaining balance | `max(0, remaining - days)` (projected) | unchanged |
+| Approved | current remaining balance | `max(0, remaining - days)` | `usedbalance += days`, `remainingbalance -= days` |
+| Rejected | unchanged | unchanged | unchanged |
+
+Approval re-runs the leave-type rules (fiscal year, `tpel`, `tpey`, workdays,
+holidays) and re-checks the balance through `leave_evaluate_approval()` before
+updating anything. A conditional `UPDATE … WHERE isapproved = 0` prevents a double
+submit from deducting twice.
+
+#### Employee workdays
+`uhr_employeesmain` stores `sunworkday`, `monworkday`, `tueworkday`, `wedworkday`,
+`thuworkday`, `friworkday`, `satworkday` as `TINYINT(1)` (1 = working day,
+0 = not a workday). The employee add/edit form exposes them as checkboxes.
+
+`leave_count_days()` receives the employee's flags through
+`leave_employee_workdays()` and skips unchecked days when the leave type does not
+include weekends. If the columns are missing (older database), counting falls back
+to the legacy Sunday/Saturday weekend. `include weekends` still counts every day.
+
 ### Approval Workflow (ESS)
 - Employees submit leave requests (status: Pending)
 - Superiors see pending requests in ESS
-- Approve: deducts from leave balance
-- Reject: records rejection reason, who, and when
+- Approve: re-checks rules and deducts from leave balance, then notifies the employee
+- Reject: records rejection reason, who, and when, then notifies the employee
 
 ### Employee Seniority & Promotion
 - Seniority date calculated based on degree acquired date and interim period
@@ -155,6 +201,48 @@ Configurable leave types with rules:
 - Job groups: Specialized (Higher Education) and Technical & Clerical (Diploma)
 - Seniority management module with promotion workflow UI
 - Helper functions: `calculate_seniority_date()`, `is_eligible_for_promotion()`
+
+---
+
+## Notifications
+
+Implemented in `includes/notifications.php` (loaded automatically by
+`includes/helpers.php`) with the UI in `modules/notifications/`.
+
+### Data model
+`uhr_notifications` stores **one row per recipient**, so read state is per user:
+
+| Column | Purpose |
+|--------|---------|
+| `userid` | recipient account |
+| `empid` | related employee (optional) |
+| `scope` | `user`, `group` or `global` |
+| `scopevalue` | `hr` / `employees` for group scope |
+| `title`, `titlear` | bilingual title |
+| `message`, `messagear` | bilingual body |
+| `link`, `module`, `refid` | deep link and source reference |
+| `isread`, `readat` | per-row read state |
+
+### Events
+- **Leave submitted** (`notify_leave_submitted`) — notifies the employee's direct
+  superior's user account (employee login = NID). If no superior login exists, it
+  falls back to the HR group so the request is not lost.
+- **Leave approved / rejected** (`notify_leave_decision`) — notifies the employee.
+- **Permission request** (`notify_permission_request`) — generic hook for a future
+  permission module; no module consumes it yet.
+
+### Audiences
+| Scope | Recipients |
+|-------|------------|
+| `user` | one selected user |
+| `group` = `hr` | admins, superadmins, HR-admin and HR-user permissions |
+| `group` = `employees` | every active user who is not HR/admin |
+| `global` | every active user |
+
+HR/admin users can compose an announcement from the module (`Send Notification`);
+employees only see their own inbox. Both layouts render a bell with the unread
+count (`notifications_render_bell()`), and every user can search, filter unread,
+mark all read, open a linked record, and delete their own notifications.
 
 ---
 
@@ -190,6 +278,56 @@ DomPDF has no Arabic contextual shaping and no Unicode bidi algorithm, so Arabic
 4. Keeps English exports left-to-right and left-aligned; Arabic cell values are still shaped when they appear.
 
 Other formats are unaffected: Word and Excel store logical Unicode text and perform their own shaping/bidi.
+
+---
+
+## Attendance Permissions Integration
+
+The Attendance module (`attendance`) now supports fixed work schedules that can be
+assigned to individual employees or departments/groups via `schedule_assignments`.
+The Attendance Permissions module (`attpermissions`) allows employees to submit
+permission requests (time-based or full-day) which route through a hierarchical
+approval workflow (superior → HR). Approved permissions affect attendance records
+without modifying raw biometric punches.
+
+### Schedule Table (`uhr_work_schedules`)
+Bilingual schedule names (`name_ar`/`name_en`), start/end times, working days
+stored in `uhr_work_schedule_days` (day_of_week 0-6).
+
+### Assignment Table (`uhr_schedule_assignments`)
+Supports `employee`, `department`, and `group` assignment types with
+`effective_from`/`effective_to` date ranges and `priority` for conflict resolution.
+Individual employee assignments take precedence over department/group assignments.
+
+### Permission Tables
+- `uhr_att_permission_types` — five configurable types:
+  `EARLY_DEPARTURE`, `LATE_ARRIVAL`, `PERSONAL`, `OFFICIAL_BUSINESS`, `WORK_ASSIGNMENT`
+- `uhr_att_permission_policies` — configurable limits per type/scope/period
+- `uhr_att_permission_requests` — requests with status DRAFT/PENDING/APPROVED/REJECTED/CANCELLED
+- `uhr_att_permission_approvals` — per-level approval decisions
+- `uhr_att_permission_attendance` — linkage to affected attendance records
+
+---
+
+## Employee Degrees & Groups (`ehr_empdegrees`)
+
+Degree records now belong to an employee group via `employeesgroup_id` foreign
+key referencing `uhr_employeesgroup`. This allows different degree ladders for
+different employee groups (e.g. Administrative Staff vs Scientific Staff).
+
+All existing degrees are assigned to group 1 (`Administrative Staff`).
+
+### Tables
+| Table | Key Fields |
+|-------|-----------|
+| `uhr_work_schedules` | `name_ar`, `name_en`, `start_time`, `end_time`, `is_active` |
+| `uhr_work_schedule_days` | `schedule_id`, `day_of_week`, `is_working_day` |
+| `uhr_schedule_assignments` | `assignment_type`, `employee_id`/`depid`/`empgroup`, `schedule_id`, `effective_from`/`effective_to`, `priority` |
+| `uhr_att_permission_types` | `code`, `name_ar`, `name_en`, `category` (TIME_BASED/FULL_DAY), `is_active` |
+| `uhr_att_permission_policies` | `type_id`, `name_ar`, `name_en`, `scope_type`, `scope_id`, `limit_unit`, `period_type`, limits |
+| `uhr_att_permission_requests` | `employee_id`, `type_id`, `start_date`/`end_date`, `start_time`/`end_time`, `reason`, `status` |
+| `uhr_att_permission_approvals` | `request_id`, `approver_user_id`, `approval_level`, `decision`, `comments` |
+| `uhr_att_permission_attendance` | `request_id`, `attendance_id`, `applied_minutes` |
 
 ---
 
@@ -235,6 +373,18 @@ Other formats are unaffected: Word and Excel store logical Unicode text and perf
 | `DB_PASS` | `AdminNewp@ss01` | Database password |
 
 ### Session Variables
+All session values live in a nested, per-application namespace so the server
+can host multiple OpenFrame-based applications without session collisions:
+
+```
+$_SESSION[UHR_SESSION_KEY][<variable>]
+```
+
+The `UHR_SESSION_KEY` constant is derived from the application folder name
+(`/UnitHR/` → `unithr`), or it can be overridden by defining it before
+`includes/config.php` loads. Direct writes to flat `$_SESSION['key']` variables
+must be avoided.
+
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `dbprefix` | `uhr_` | Table name prefix |
@@ -242,6 +392,11 @@ Other formats are unaffected: Word and Excel store logical Unicode text and perf
 | `lang` | `ar` | Default language |
 | `encrypt_key` | (set in config) | Encryption key |
 | `devtool_disabled` | `0` | DevTools protection disabled (session) |
+
+On login the namespace holds the authentication state (`user_id`, `user`,
+`user_permissions`, `otp_*`); on logout only the application's own namespace
+is unset and the session id is regenerated (`session_regenerate_id(true)`),
+so co-hosted OpenFrame applications keep their sessions alive.
 
 ---
 
@@ -252,11 +407,13 @@ Other formats are unaffected: Word and Excel store logical Unicode text and perf
 |------|---------|
 | `index.php` | Front controller, routing, auth |
 | `install.php` | Database installer & seeder |
-| `schema.sql` | Database schema (18 tables) |
+| `schema.sql` | Database schema (21 tables) |
 | `includes/config.php` | Configuration |
 | `includes/db.php` | Database connection (PDO) |
 | `includes/helpers.php` | Utilities, exporters, field_input() |
 | `includes/auth.php` | Authentication functions |
+| `includes/leave_rules.php` | Shared leave-rule engine and workday-aware day counting |
+| `includes/notifications.php` | Notification engine, scopes, navbar bell |
 | `includes/crud_engine.php` | Generic CRUD engine |
 | `includes/header.php` | Layout header (3-row structure) |
 | `includes/footer.php` | Layout footer (devtool toggle) |

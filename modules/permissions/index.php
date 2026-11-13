@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 require_once __DIR__ . '/../../includes/crud_engine.php';
 $boolOpts = ['table'=>'reqexam','value'=>'id','label'=>'label','label_ar'=>'labelar','where'=>[]];
 run_table_module([

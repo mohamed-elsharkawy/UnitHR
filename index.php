@@ -13,6 +13,11 @@ require_once __DIR__ . '/includes/helpers.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/routes.php';
 
+// Front-controller entry marker: modules check this to prevent direct access.
+if (!defined('UNITHR_ENTRY')) {
+    define('UNITHR_ENTRY', true);
+}
+
 // Handle Change Password
 if ($action === 'change-password') {
     require_login();
@@ -66,7 +71,7 @@ if ($action === 'change-password') {
                     <?php if ($success): ?>
                     <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
                     <?php endif; ?>
-                    <form action="index.php?action=change-password" method="post" novalidate>
+                    <form action="?action=change-password" method="post" novalidate>
                         <div class="mb-3">
                             <label class="form-label"><?= $isAr ? 'كلمة المرور الحالية' : 'Current Password' ?> <span class="text-danger">*</span></label>
                             <input type="password" name="current_password" class="form-control" required autofocus>
@@ -81,7 +86,7 @@ if ($action === 'change-password') {
                         </div>
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-primary btn-lg"><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></button>
-                            <a href="index.php" class="btn btn-secondary"><?= $isAr ? 'العودة' : 'Back' ?></a>
+                            <a href="./" class="btn btn-secondary"><?= $isAr ? 'العودة' : 'Back' ?></a>
                         </div>
                     </form>
                 </div>
@@ -95,8 +100,8 @@ if ($action === 'change-password') {
 
 // Handle language switch
 if (!empty($_GET['lang'])) {
-    $_SESSION['lang'] = in_array($_GET['lang'], ['ar', 'en']) ? $_GET['lang'] : 'ar';
-    header('Location: index.php' . (isset($_GET['module']) ? '?module=' . urlencode($_GET['module']) : ''));
+    $_SESSION[UHR_SESSION_KEY]['lang'] = in_array($_GET['lang'], ['ar', 'en']) ? $_GET['lang'] : 'ar';
+    header('Location: ' . (isset($_GET['module']) ? '?module=' . urlencode($_GET['module']) : './'));
     exit;
 }
 
@@ -105,9 +110,9 @@ if (isset($_GET['toggle_devtool'])) {
     require_login();
     $u = current_user();
     if (is_superadmin() || !empty($u['is_admin'])) {
-        $_SESSION['devtool_disabled'] = empty($_SESSION['devtool_disabled']) ? 1 : 0;
+        $_SESSION[UHR_SESSION_KEY]['devtool_disabled'] = empty($_SESSION[UHR_SESSION_KEY]['devtool_disabled']) ? 1 : 0;
     }
-    $redirect = 'index.php';
+    $redirect = './';
     if (isset($_GET['module'])) $redirect .= '?module=' . urlencode($_GET['module']);
     header('Location: ' . $redirect);
     exit;
@@ -116,50 +121,54 @@ if (isset($_GET['toggle_devtool'])) {
 // Handle actions
 $action = $_GET['action'] ?? '';
 if ($action === 'login') {
+    if (is_logged_in()) {
+        header('Location: ?module=home');
+        exit;
+    }
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $res = attempt_login($_POST['login'] ?? '', $_POST['password'] ?? '', $_POST['otp'] ?? '');
         if ($res['ok']) {
             if (!empty($res['otp_setup_required'])) {
                 // First-time login: establish a partial session and redirect to OTP setup page
-                $_SESSION['otp_setup_required'] = 1;
-                $_SESSION['user_id'] = (int)($res['user']['id'] ?? 0);
-                $_SESSION['user_permissions'] = $_SESSION['otp_setup_perms'] ?? [];
-                $_SESSION['user'] = [
+                $_SESSION[UHR_SESSION_KEY]['otp_setup_required'] = 1;
+                $_SESSION[UHR_SESSION_KEY]['user_id'] = (int)($res['user']['id'] ?? 0);
+                $_SESSION[UHR_SESSION_KEY]['user_permissions'] = $_SESSION[UHR_SESSION_KEY]['otp_setup_perms'] ?? [];
+                $_SESSION[UHR_SESSION_KEY]['user'] = [
                     'id' => (int)($res['user']['id'] ?? 0),
                     'username' => $res['user']['username'] ?? '',
                     'username_ar' => $res['user']['username'] ?? '',
                     'email' => $res['user']['email'] ?? '',
                     'is_superadmin' => !empty($res['user']['is_superadmin']) ? 1 : 0,
                     'is_admin' => !empty($res['user']['is_admin']) ? 1 : 0,
-                    'is_hradmin' => !empty($_SESSION['user_permissions']['_is_hradmin']) ? 1 : 0,
-                    'is_hruser' => !empty($_SESSION['user_permissions']['_is_hruser']) ? 1 : 0,
+                    'is_hradmin' => !empty($_SESSION[UHR_SESSION_KEY]['user_permissions']['_is_hradmin']) ? 1 : 0,
+                    'is_hruser' => !empty($_SESSION[UHR_SESSION_KEY]['user_permissions']['_is_hruser']) ? 1 : 0,
                 ];
-                header('Location: index.php?action=setup-otp');
+                header('Location: ?action=setup-otp');
                 exit;
             }
-            $_SESSION['otp_verified'] = 1;
+            $_SESSION[UHR_SESSION_KEY]['otp_verified'] = 1;
             // Redirect employees to ESS, admins to dashboard
             $redirectModule = is_app_staff() ? '' : 'ess';
             if ($redirectModule) {
-                header('Location: index.php?module=' . $redirectModule);
+                header('Location: ?module=' . $redirectModule);
             } else {
-                header('Location: index.php');
+                header('Location: ./');
             }
             exit;
         }
         if (!empty($res['otp_required'])) {
-            $_SESSION['login_error'] = $res['error'];
-            $_SESSION['otp_required'] = 1;
-            header('Location: index.php?action=login');
+            $_SESSION[UHR_SESSION_KEY]['login_error'] = $res['error'];
+            $_SESSION[UHR_SESSION_KEY]['otp_required'] = 1;
+            header('Location: ?action=login');
             exit;
         }
         // OTP pending - redirect to OTP verification page (second step)
         if (!empty($res['otp_pending'])) {
-            header('Location: index.php?action=verify-otp');
+            header('Location: ?action=verify-otp');
             exit;
         }
-        $_SESSION['login_error'] = $res['error'];
-        header('Location: index.php?action=login');
+        $_SESSION[UHR_SESSION_KEY]['login_error'] = $res['error'];
+        header('Location: ?action=login');
         exit;
     }
     include __DIR__ . '/includes/header.php';
@@ -223,7 +232,7 @@ if ($action === 'change-password') {
                     <?php if ($success): ?>
                     <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
                     <?php endif; ?>
-                    <form action="index.php?action=change-password" method="post" novalidate>
+                    <form action="?action=change-password" method="post" novalidate>
                         <div class="mb-3">
                             <label class="form-label"><?= $isAr ? 'كلمة المرور الحالية' : 'Current Password' ?> <span class="text-danger">*</span></label>
                             <input type="password" name="current_password" class="form-control" required autofocus>
@@ -238,7 +247,7 @@ if ($action === 'change-password') {
                         </div>
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-primary btn-lg"><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></button>
-                            <a href="index.php" class="btn btn-secondary"><?= $isAr ? 'العودة' : 'Back' ?></a>
+                            <a href="./" class="btn btn-secondary"><?= $isAr ? 'العودة' : 'Back' ?></a>
                         </div>
                     </form>
                 </div>
@@ -252,8 +261,8 @@ if ($action === 'change-password') {
 
 // OTP verification page (second step of login)
 if ($action === 'verify-otp') {
-    if (empty($_SESSION['otp_pending'])) {
-        header('Location: index.php?action=login');
+    if (empty($_SESSION[UHR_SESSION_KEY]['otp_pending'])) {
+        header('Location: ?action=login');
         exit;
     }
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -262,14 +271,14 @@ if ($action === 'verify-otp') {
         if ($result['ok']) {
             $redirectModule = is_app_staff() ? '' : 'ess';
             if ($redirectModule) {
-                header('Location: index.php?module=' . $redirectModule);
+                header('Location: ?module=' . $redirectModule);
             } else {
-                header('Location: index.php');
+                header('Location: ./');
             }
             exit;
         }
-        $_SESSION['login_error'] = $result['error'];
-        header('Location: index.php?action=login');
+        $_SESSION[UHR_SESSION_KEY]['login_error'] = $result['error'];
+        header('Location: ?action=login');
         exit;
     }
     include __DIR__ . '/includes/header.php';
@@ -285,14 +294,14 @@ if ($action === 'verify-otp') {
                     <?php if ($flash = get_flash()): ?>
                     <div class="alert alert-<?= $flash['type'] === 'error' ? 'danger' : $flash['type'] ?>"><?= htmlspecialchars($flash['msg']) ?></div>
                     <?php endif; ?>
-                    <form action="index.php?action=verify-otp" method="post" novalidate>
+                    <form action="?action=verify-otp" method="post" novalidate>
                         <div class="mb-3">
                             <label class="form-label"><?= lang() === 'ar' ? 'رمز التحقق (6 أرقام)' : 'Verification Code (6 digits)' ?></label>
                             <input type="text" name="otp_code" class="form-control" maxlength="6" required autofocus>
                         </div>
                         <div class="d-grid gap-2">
                             <button type="submit" class="btn btn-primary btn-lg"><?= lang() === 'ar' ? 'تحقق' : 'Verify' ?></button>
-                            <a href="index.php?action=logout" class="btn btn-secondary"><?= lang() === 'ar' ? 'إلغاء' : 'Cancel' ?></a>
+                            <a href="?action=logout" class="btn btn-secondary"><?= lang() === 'ar' ? 'إلغاء' : 'Cancel' ?></a>
                         </div>
                     </form>
                 </div>
@@ -311,21 +320,21 @@ if ($action === 'logout') {
 
 // Legacy 'otp' action: redirect to login (OTP is verified at login time)
 if ($action === 'otp') {
-    header('Location: index.php?action=login');
+    header('Location: ?action=login');
     exit;
 }
 
 // OTP setup page (first-time login for admins/HR staff)
 if ($action === 'setup-otp') {
     require_login();
-    if (empty($_SESSION['otp_setup_required'])) {
-        header('Location: index.php');
+    if (empty($_SESSION[UHR_SESSION_KEY]['otp_setup_required'])) {
+        header('Location: ./');
         exit;
     }
-    $uid = (int)($_SESSION['otp_force_setup_user'] ?? current_user_id());
+    $uid = (int)($_SESSION[UHR_SESSION_KEY]['otp_force_setup_user'] ?? current_user_id());
     $user = fetchRow("SELECT id, username, email, otp_secret, otp_enabled FROM " . table('users') . " WHERE id=? AND omitted=0 LIMIT 1", [$uid]);
     if (!$user) {
-        header('Location: index.php');
+        header('Location: ./');
         exit;
     }
     if (empty($user['otp_secret'])) {
@@ -340,17 +349,17 @@ if ($action === 'setup-otp') {
         $code = trim($_POST['otp_code'] ?? '');
         if (otp_verify($user['otp_secret'], $code)) {
             q("UPDATE " . table('users') . " SET otp_enabled = 1 WHERE id = ?", [$uid]);
-            $_SESSION['otp_setup_required'] = 0;
+            $_SESSION[UHR_SESSION_KEY]['otp_setup_required'] = 0;
             $fullUser = fetchRow("SELECT * FROM " . table('users') . " WHERE id=? AND omitted=0 LIMIT 1", [$uid]);
-            $perms = $_SESSION['otp_setup_perms'] ?? ($_SESSION['user_permissions'] ?? []);
-            unset($_SESSION['otp_force_setup_user'], $_SESSION['otp_setup_perms']);
+            $perms = $_SESSION[UHR_SESSION_KEY]['otp_setup_perms'] ?? ($_SESSION[UHR_SESSION_KEY]['user_permissions'] ?? []);
+            unset($_SESSION[UHR_SESSION_KEY]['otp_force_setup_user'], $_SESSION[UHR_SESSION_KEY]['otp_setup_perms']);
             if ($fullUser) {
                 complete_login($fullUser, $perms, true);
             } else {
-                $_SESSION['otp_verified'] = 1;
+                $_SESSION[UHR_SESSION_KEY]['otp_verified'] = 1;
             }
             set_flash('success', 'OTP authenticator configured successfully.');
-            header('Location: index.php');
+            header('Location: ./');
             exit;
         } else {
             set_flash('error', 'Invalid OTP code. Try again.');
@@ -379,7 +388,7 @@ if ($action === 'setup-otp') {
                 <?php if ($flash = get_flash()): ?>
                 <div class="alert alert-<?= $flash['type'] === 'error' ? 'danger' : $flash['type'] ?>"><?= htmlspecialchars($flash['msg']) ?></div>
                 <?php endif; ?>
-                <form method="post" action="index.php?action=setup-otp">
+                <form method="post" action="?action=setup-otp">
                     <div class="mb-3">
                         <label class="form-label"><?= lang() === 'ar' ? 'رمز التحقق (6 أرقام)' : 'Verification Code (6 digits)' ?></label>
                         <input type="text" name="otp_code" class="form-control" maxlength="6" required autofocus>
@@ -409,9 +418,24 @@ if (current_module() === 'ess') {
 require_login();
 
 // Redirect employees (non-staff) to ESS if trying to access admin modules
-if (!is_app_staff() && current_module() !== 'ess') {
-    header('Location: index.php?module=ess');
+// (notifications is available to employees: it is their personal inbox).
+if (!is_app_staff() && !in_array(current_module(), ['ess', 'notifications', 'attpermissions'], true)) {
+    header('Location: ?module=ess');
     exit;
+}
+
+// Permission gate: non-admin users may only open modules they have view
+// permission for (admins / superadmins have full access). Modules that are
+// always available to signed-in users (dashboard, ESS, personal inbox,
+// attendance self-service) bypass this check.
+$alwaysVisibleModules = ['home', 'ess', 'notifications', 'attpermissions'];
+if (!is_superadmin() && !(current_user() && !empty(current_user()['is_admin']))) {
+    $cm = current_module();
+    if (!in_array($cm, $alwaysVisibleModules, true) && !user_can($cm, 'view')) {
+        set_flash('error', 'You do not have permission to access this module.');
+        header('Location: ?module=home');
+        exit;
+    }
 }
 
 // OTP gate for admins & HR staff

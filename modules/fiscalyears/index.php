@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 require_once __DIR__ . '/../../includes/crud_engine.php';
 run_table_module([
     'table'        => 'fiscalyears',

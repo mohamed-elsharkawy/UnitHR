@@ -23,7 +23,7 @@
 - ✅ Bilingual interface (Arabic RTL default, English LTR)
 - ✅ TOTP two-factor authentication (Google/Microsoft/FreeOTP/Oracle Authenticator)
 - ✅ Employee login credentials auto-created on employee addition
-- ✅ National ID auto-deduction (Egyptian NID format)
+- ✅ National ID auto-deduction (birth date, retirement date, and gender — last 3 digits: even = Male, odd = Female)
 - ✅ Leave balance tracking per leave type per fiscal year
 - ✅ Leave approval/rejection workflow by superiors
 - ✅ Soft-delete with audit shadow logging
@@ -32,7 +32,18 @@
 - ✅ DevTools protection with admin toggle
 - ✅ Change password for all users
 - ✅ Red asterisk on mandatory fields
-- ✅ Searchable dropdown menus
+- ✅ Searchable dropdown menus (Select2, offline) across all modules
+- ✅ Permission-based menu loading (sidebar/navbar filtered by user permissions; employees contained to ESS)
+- ✅ Employee Degrees linked to Employee Groups (permissions by group)
+- ✅ Employees Archives — upload and search employee documents by name, employee, or NID
+- ✅ Document Types management
+- ✅ Manual Promotions with promotion decision number/date and seniority history
+- ✅ File attachments for promotion decisions and archive documents (PDF/JPG/PNG/TIFF)
+- ✅ Attendance reports export (PDF, XLSX, Word, CSV)
+- ✅ Installer choice: create new database or use existing one
+- ✅ REST/JSON API (`/api/`) with Basic/Bearer/API-key auth, LDAP-like bind & search
+- ✅ Cron-based module auto-sync (cron.php) for appmodules table
+- ✅ Sticky sidebar (full height), sticky navbar with shrink-on-scroll, sticky footer with GitHub link
 
 ## Requirements
 
@@ -51,28 +62,43 @@ git clone https://github.com/your-username/UnitHR.git
 ### 2. Configure Database
 Edit `includes/config.php` or set environment variables:
 ```php
-$_SESSION['dbhost'] = '127.0.0.1';
-$_SESSION['dbport'] = 3306;
-$_SESSION['dbuser'] = 'root';
-$_SESSION['dbpass'] = 'your_password';
-$_SESSION['dbname'] = 'unithr';
+$_SESSION[UHR_SESSION_KEY]['dbhost'] = '127.0.0.1';
+$_SESSION[UHR_SESSION_KEY]['dbport'] = 3306;
+$_SESSION[UHR_SESSION_KEY]['dbuser'] = 'root';
+$_SESSION[UHR_SESSION_KEY]['dbpass'] = 'your_password';
+$_SESSION[UHR_SESSION_KEY]['dbname'] = 'unithr';
 ```
 
 Or use environment variables: `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`
 
+> **Multiple applications on one server:** the server may host several
+> OpenFrame-based applications that share PHP's single session cookie per
+> host, so every value is stored inside a nested array,
+> `$_SESSION[UHR_SESSION_KEY][...]`, instead of flat `$_SESSION['key']`
+> variables. The namespace key is derived automatically from the application
+> folder (e.g. `/UnitHR/` → `unithr`), so copies of the framework never
+> overwrite each other's session data. You can pin your own key by defining
+> `UHR_SESSION_KEY` before the framework's `includes/config.php` runs.
+
 ### 3. Run Installer
 Navigate to `http://localhost/UnitHR/install.php` in your browser. This will:
 - Create the database
-- Create all 18 tables
+- Create all tables
 - Seed reference data
 - Create default SuperAdmin account
 
-### 4. Default Login
+### 4. Sync Modules (Optional)
+Run `cron.php` to sync all module info.php data to the `appmodules` database table:
+```bash
+php cron.php
+```
+
+### 5. Default Login
 - **Username:** `admin`
 - **Password:** `admin123`
 - OTP setup is required on first login
 
-### 5. (Optional) Remove Installer
+### 6. (Optional) Remove Installer
 After successful installation, you can remove `install.php` for security.
 
 ## Project Structure
@@ -81,7 +107,8 @@ After successful installation, you can remove `install.php` for security.
 UnitHR/
 ├── index.php              # Front controller
 ├── install.php            # Database installer & seeder
-├── schema.sql             # MySQL schema (18 tables + audit log)
+├── cron.php               # Module sync cron script
+├── schema.sql             # MySQL schema (44 tables + audit log)
 ├── redirect.html          # DevTools redirect page
 ├── assets/                # Bootstrap CSS/JS, icons, logo
 ├── includes/              # Core framework files
@@ -99,7 +126,7 @@ UnitHR/
 ├── lang/                  # Translations
 │   ├── en.php             # English labels
 │   └── ar.php             # Arabic labels
-└── modules/               # 19 application modules
+└── modules/               # 28 application modules
     ├── home/              # Dashboard
     ├── employeesmain/     # Employee records (NID deduction)
     ├── leavesbalances/    # Leave balances per type & fiscal year
@@ -119,16 +146,42 @@ UnitHR/
 |--------|-------------|
 | **Home** | Dashboard with statistics |
 | **Employees Main** | Employee records with NID auto-deduction |
-| **Employee Seniority** | Seniority tracking & promotion management |
+| **Employee Seniority** | Seniority tracking & promotion management (with Manual Promotions) |
 | **Employee Groups/Types/Degrees/Status** | Reference data management |
+| **Employees Archives** | Employee document archive with file upload & search |
+| **Document Types** | Manage document types for archives |
+| **Manual Promotions** | Manual promotion records with decision number/date & seniority history |
 | **Department Types/Structure** | Organization hierarchy |
 | **Leave Types/Balances/Requests** | Leave management with approval workflow |
+| **Notifications** | Per-user inbox, leave alerts, global/group announcements |
 | **Users & Permissions** | User accounts and module permissions |
 | **Access Log** | Login/logout audit trail |
 | **Reports** | Export data to CSV/XLSX/Word/PDF |
 | **ESS** | Employee Self-Service portal |
 | **Fiscal Years** | Fiscal year definitions |
 | **Retirement Plan** | Retirement age calculations |
+
+### Module Groups & Sidebar
+
+Every module declares its sidebar group in its own `modules/<folder>/info.php`:
+
+```php
+$moduleInfo = [
+    'name'  => 'Employee Seniority',
+    'group' => 'Employees',   // sidebar group identifier
+    'order' => 70,            // position inside the group
+    // ...
+];
+```
+
+`includes/header.php` builds the submenu from these identifiers:
+
+- if a group does not exist yet, it is created;
+- if it already exists, the module is appended to it;
+- modules inside a group are sorted by `order`, then by display name;
+- modules without a `group` value fall back to **Other**.
+
+The preferred group order is **Dashboard, Organization, Employees, Leaves, Administration, Fiscal, Reports, Self-Service – ESS**. Any unknown group is displayed afterwards in alphabetical order. Adding a module to an existing group only requires setting `group` and `order` in its `info.php` — no change to `header.php` is needed.
 
 ## Default Credentials
 
@@ -143,7 +196,7 @@ UnitHR/
 |------|--------|
 | SuperAdmin | Full access to all modules + dashboard + DevTools toggle |
 | Admin | Full access to all modules + dashboard + DevTools toggle |
-| Employee | ESS only (own data, leave requests, change password) |
+| Employee | ESS only (own data, leave requests, own notification inbox, change password) |
 
 ## Database Schema
 
@@ -168,6 +221,18 @@ All libraries are bundled offline in `assets/`; no Composer or internet access i
 
 Arabic PDF exports are fully supported: letters are converted to their contextual presentation forms and the table is laid out right-to-left (first column on the right, right-aligned text), while numbers, dates, and Latin names keep their natural order. English exports remain left-to-right.
 
+## REST/JSON API
+
+A lightweight JSON API lives in `api/`. It returns JSON and can be used like
+an LDAP directory service: bind (authenticate) then search/query.
+
+- Base URL: `http://localhost/UnitHR/api/?action=<action>`
+- Auth: HTTP Basic, Bearer token (from `action=login`), or `X-API-Key` header.
+- Endpoints: `employees`, `employee`, `departments`, `degrees`, `groups`,
+  `statuses`, `leaves`, `attendance`, `archives`, `promotions`,
+  `documenttypes`, `notifications`, etc.
+- See `api/README.md` for full documentation and examples.
+
 ## Security Features
 
 - Session-based authentication
@@ -186,6 +251,8 @@ Employees can:
 - View leave balances per leave type and fiscal year
 - View leave history
 - Submit leave requests (pending approval)
+- See projected balance immediately after submitting a request
+- Read their own notifications in the bell menu and inbox
 - Change password
 - Logout
 
@@ -193,11 +260,48 @@ ESS is accessible only to logged-in employees. Non-authenticated users are redir
 
 ## Leave Approval Workflow
 
-1. Employee submits leave request via ESS (status: Pending)
-2. Superior (employee with subordinates) sees pending requests in ESS
-3. Superior can **Approve** (deducts from leave balance) or **Reject** (with reason)
-4. Rejected leaves show who rejected and when
-5. Approved leaves cannot be edited or deleted
+1. Employee submits leave request via ESS (status: Pending).
+2. The request stores the live remaining balance in `balancebefore` and the **projected** balance in `balanceafter` (`max(0, remaining - days)`), so the employee sees the expected result before approval. The leave-type balance in `leavesbalances` is **not** changed at this point.
+3. Superior (employee with subordinates) sees pending requests in ESS and receives a notification.
+4. Superior can **Approve** or **Reject** (with reason).
+5. Approval re-checks the leave-type rules and current balance, then:
+   - sets `balancebefore`/`balanceafter` from the current balance,
+   - adds the days to `usedbalance` and subtracts them from `remainingbalance` in `leavesbalances`,
+   - notifies the employee.
+6. Rejection records who rejected and when; the balance is untouched and the employee is notified.
+7. Approved leaves cannot be edited or deleted.
+
+The admin **Employee Leaves** module follows the same rules: adding a pending request stores the projected `balanceafter` only, while adding an approved request deducts the balance immediately.
+
+### Employee Workdays
+
+Each employee stores seven boolean workday flags on `uhr_employeesmain`
+(`sunworkday` … `satworkday`; `1` = working day, `0` = not a workday).
+They are editable on the employee add/edit form and shown on the employee view.
+
+- Leave day counting uses these flags instead of the global weekend whenever the
+  columns are present, so employees on different schedules are handled correctly.
+- Leave types with **include weekends** enabled count every calendar day and
+  ignore the flags.
+- Official holidays are still excluded unless the leave type includes holidays.
+- Defaults preserve the legacy weekend: Sunday and Saturday off, Monday–Friday working.
+
+### Notifications
+
+The **Notifications** module is available to every logged-in user and also appears
+as a bell in the admin and ESS navbars.
+
+- Leave submission notifies the employee's direct superior; if the superior has no
+  login account, HR users receive it instead.
+- Approval/rejection notifies the employee.
+- HR/admin can compose announcements for:
+  - **Global** — every active user,
+  - **HR Employees** — admins and HR permission holders,
+  - **Normal Employees** — users without HR/admin permissions,
+  - **Specific User** — one selected account.
+- One row is written per recipient, so each user has an independent read state.
+- Users can search, filter unread, mark all read, open, and delete their own
+  notifications. There is no cross-user access.
 
 ### Employee Seniority & Promotion
 - Seniority date calculated based on degree acquired date and interim period

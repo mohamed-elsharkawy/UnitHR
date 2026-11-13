@@ -66,7 +66,7 @@ function L($key, ...$args) {
     static $loadedLang = null;
     static $strings = [];
 
-    $currentLang = $_SESSION['lang'] ?? 'ar';
+    $currentLang = $_SESSION[UHR_SESSION_KEY]['lang'] ?? 'ar';
     if ($loadedLang !== $currentLang) {
         $langFile = __DIR__ . '/../lang/' . ($currentLang === 'ar' ? 'ar' : 'en') . '.php';
         $strings = [];
@@ -76,7 +76,7 @@ function L($key, ...$args) {
             $strings = $lang ?? [];
         }
         $loadedLang = $currentLang;
-        $_SESSION['lang_strings'] = $strings;
+        $_SESSION[UHR_SESSION_KEY]['lang_strings'] = $strings;
     }
 
     $str = $strings[$key] ?? $key;
@@ -232,15 +232,15 @@ function arabic_search_pattern($text) {
 // Current user / session helpers
 // -------------------------------------------------------------------------
 function current_user() {
-    return $_SESSION['user'] ?? null;
+    return $_SESSION[UHR_SESSION_KEY]['user'] ?? null;
 }
 
 function current_user_id() {
-    return (int)($_SESSION['user_id'] ?? 0);
+    return (int)($_SESSION[UHR_SESSION_KEY]['user_id'] ?? 0);
 }
 
 function is_logged_in() {
-    return !empty($_SESSION['user_id']);
+    return !empty($_SESSION[UHR_SESSION_KEY]['user_id']);
 }
 
 function is_superadmin() {
@@ -272,7 +272,7 @@ function ajax_output($body, $contentType = 'text/html; charset=utf-8') {
 }
 
 function user_permissions() {
-    return $_SESSION['user_permissions'] ?? [];
+    return $_SESSION[UHR_SESSION_KEY]['user_permissions'] ?? [];
 }
 
 /**
@@ -308,7 +308,7 @@ function user_can($module, $action = 'view') {
 
 function require_login() {
     if (!is_logged_in()) {
-        header('Location: index.php?action=login');
+        header('Location: ?action=login');
         exit;
     }
 }
@@ -318,9 +318,9 @@ function require_otp() {
     if (!is_app_staff()) {
         return;
     }
-    if (empty($_SESSION['otp_verified'])) {
+    if (empty($_SESSION[UHR_SESSION_KEY]['otp_verified'])) {
         // Re-authenticate instead of looping on a non-existent 'otp' action
-        header('Location: index.php?action=login');
+        header('Location: ?action=login');
         exit;
     }
 }
@@ -328,8 +328,8 @@ function require_otp() {
 function require_permission($module, $action = 'view') {
     require_login();
     if (!user_can($module, $action)) {
-        $_SESSION['error'] = 'You do not have permission to ' . $action . ' in module: ' . htmlspecialchars($module);
-        header('Location: index.php?module=home');
+        set_flash('error', 'You do not have permission to ' . $action . ' in module: ' . htmlspecialchars($module));
+        header('Location: ?module=home');
         exit;
     }
 }
@@ -1060,11 +1060,11 @@ function do_export($format, $filename, $title, $headers, $rows) {
  * Flash message helpers
  */
 function set_flash($type, $msg) {
-    $_SESSION['flash'] = ['type' => $type, 'msg' => $msg];
+    $_SESSION[UHR_SESSION_KEY]['flash'] = ['type' => $type, 'msg' => $msg];
 }
 function get_flash() {
-    $f = $_SESSION['flash'] ?? null;
-    unset($_SESSION['flash']);
+    $f = $_SESSION[UHR_SESSION_KEY]['flash'] ?? null;
+    unset($_SESSION[UHR_SESSION_KEY]['flash']);
     return $f;
 }
 
@@ -1102,6 +1102,25 @@ function fields_for_lang($fields) {
 }
 
 /**
+ * Deduce gender from a national ID.
+ *
+ * Rule: look at the last three digits of the NID.
+ *   even -> Male
+ *   odd  -> Female
+ *
+ * @param string $nid National ID (non-digits are ignored)
+ * @return string 'Male', 'Female', or '' when fewer than three digits exist
+ */
+function gender_from_nid($nid) {
+    $digits = preg_replace('/\D+/', '', (string)$nid);
+    if (strlen($digits) < 3) {
+        return '';
+    }
+    $last3 = (int)substr($digits, -3);
+    return ($last3 % 2 === 0) ? 'Male' : 'Female';
+}
+
+/**
  * Render a form input for a field definition.
  * Used by crud_engine and custom modules.
  */
@@ -1121,7 +1140,7 @@ function field_input($f, $value = '') {
         case 'textarea':
             $rows = !empty($f['rows']) ? (int)$f['rows'] : 3;
             return '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
-                .'<textarea name="'.$name.'" class="form-control" rows="'.$rows.'"'.$required.$placeholder.$disabled.$readonly.'>'.$val.'</textarea></div>';
+                .'<textarea name="'.$name.'" class="form-control" rows="'.$rows.'"'.$required.$placeholder.$disabled.$readonly.$extra.'>'.$val.'</textarea></div>';
         case 'select':
             $options = '';
             if (!empty($f['options'])) {
@@ -1156,21 +1175,40 @@ function field_input($f, $value = '') {
             }
             $empty = !empty($f['allow_empty']) ? '<option value="">'.htmlspecialchars($f['empty_label'] ?? (lang()==='ar'?'-- اختر --':'-- Select --')).'</option>' : '';
             return '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
-                .'<select name="'.$name.'" class="form-select"'.$required.$placeholder.$disabled.$readonly.'>'
+                .'<select name="'.$name.'" class="form-select"'.$required.$placeholder.$disabled.$readonly.$extra.'>'
                 .$empty.$options.'</select></div>';
         case 'password':
             return '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
-                .'<input type="password" name="'.$name.'" class="form-control"'.$placeholder.$disabled.$readonly.'></div>';
+                .'<input type="password" name="'.$name.'" class="form-control"'.$placeholder.$disabled.$readonly.$extra.'></div>';
         case 'date':
             return '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
-                .'<input type="date" name="'.$name.'" class="form-control" value="'.$val.'"'.$required.$disabled.$readonly.'></div>';
+                .'<input type="date" name="'.$name.'" class="form-control" value="'.$val.'"'.$required.$disabled.$readonly.$extra.'></div>';
         case 'number':
             return '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
-                .'<input type="number" name="'.$name.'" class="form-control" value="'.$val.'"'.$required.$placeholder.$disabled.$readonly.'></div>';
+                .'<input type="number" name="'.$name.'" class="form-control" value="'.$val.'"'.$required.$placeholder.$disabled.$readonly.$extra.'></div>';
+        case 'file':
+            $accept = !empty($f['accept']) ? strtoupper(str_replace(' ', '', $f['accept'])) : '';
+            $acceptAttr = '';
+            if ($accept !== '') {
+                $exts = array_map('trim', explode(',', $accept));
+                $acceptAttr = ' accept=".' . implode(',.', array_map('strtolower', $exts)) . '"';
+            }
+            $requiredAttr = !empty($f['required']) ? ' required' : '';
+            $html = '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
+                .'<input type="file" name="'.$name.'" class="form-control"'.$acceptAttr.$requiredAttr.$disabled.$extra.'>';
+            if ($val !== '') {
+                $html .= '<div class="form-text mt-1"><i class="bi bi-paperclip me-1"></i><a href="'.htmlspecialchars($val, ENT_QUOTES).'" target="_blank">'.htmlspecialchars(basename($val)).'</a></div>';
+            }
+            $html .= '</div>';
+            return $html;
         case 'hidden':
             return '<input type="hidden" name="'.$name.'" value="'.$val.'">';
         default:
             return '<div class="mb-3"><label class="form-label">'.htmlspecialchars($label).$asterisk.'</label>'
-                .'<input type="text" name="'.$name.'" class="form-control" value="'.$val.'"'.$required.$placeholder.$disabled.$readonly.'></div>';
+                .'<input type="text" name="'.$name.'" class="form-control" value="'.$val.'"'.$required.$placeholder.$disabled.$readonly.$extra.'></div>';
     }
 }
+
+// Notification helpers are part of the shared runtime so every module,
+// including ESS and the navbar, can use them without extra includes.
+require_once __DIR__ . '/notifications.php';

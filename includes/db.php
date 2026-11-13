@@ -25,7 +25,7 @@ function db() {
             ]);
         } catch (PDOException $e) {
             $db = false; // mark as unavailable
-            $_SESSION['db_error'] = $e->getMessage();
+            $_SESSION[UHR_SESSION_KEY]['db_error'] = $e->getMessage();
         }
     }
     return $db;
@@ -37,7 +37,7 @@ function db_available() {
 }
 
 function db_error() {
-    return $_SESSION['db_error'] ?? null;
+    return $_SESSION[UHR_SESSION_KEY]['db_error'] ?? null;
 }
 
 /**
@@ -53,7 +53,7 @@ function q($sql, $params = []) {
         $stmt->execute($params);
         return $stmt;
     } catch (PDOException $e) {
-        $_SESSION['db_error'] = $e->getMessage();
+        $_SESSION[UHR_SESSION_KEY]['db_error'] = $e->getMessage();
         return false;
     }
 }

@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 require_once __DIR__ . '/../../includes/crud_engine.php';
 
 function module_deptypes_before_save(&$data, $isAdd, $id = 0, $old = []) {
@@ -22,7 +24,7 @@ function updateDeptParentNames(select) {
         document.querySelector("input[name=\"deptypeparentnamear\"]").value = "";
         return;
     }
-    fetch("index.php?module=deptypes&a=getparent&parentid=" + parentId)
+    fetch("?module=deptypes&a=getparent&parentid=" + parentId)
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (data.deptypename) document.querySelector("input[name=\"deptypeparentname\"]").value = data.deptypename;

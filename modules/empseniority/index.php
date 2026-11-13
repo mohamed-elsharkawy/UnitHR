@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 /**
  * EmpSeniority - Employee Seniority & Promotion Management
  */
@@ -56,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_empid'])) {
             [$emp['empfullname'], $emp['empfullnamear'], $empid]);
         
         set_flash('success', $isAr ? 'تمت ترقية الموظف بنجاح.' : 'Employee promoted successfully.');
-        header('Location: index.php?module=empseniority'); exit;
+        header('Location: ?module=empseniority'); exit;
     } else {
         set_flash('error', $isAr ? 'بيانات غير صحيحة.' : 'Invalid data.');
     }
@@ -84,13 +86,14 @@ $degrees = fetchAll("SELECT id, degreename, degreenamear, interimperiod, nextdeg
 
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-graph-up-arrow me-2"></i><?= $isAr ? 'أقدمية الموظفين' : 'Employee Seniority' ?></h2>
+    <a href="?module=emppromotions" class="btn btn-primary"><i class="bi bi-award me-1"></i><?= $isAr ? 'ترقية موظف' : 'Manual Promotions' ?></a>
 </div>
 
 <form method="get" class="row g-2 mb-3 align-items-end">
     <input type="hidden" name="module" value="empseniority">
-    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="Search (Arabic/English)..."></div>
+    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="<?= $isAr ? 'بحث (عربي/إنجليزي)...' : 'Search (Arabic/English)...' ?>"></div>
     <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
-    <div class="col-md-2"><a href="index.php?module=empseniority" class="btn btn-outline-secondary w-100">Reset</a></div>
+    <div class="col-md-2"><a href="?module=empseniority" class="btn btn-outline-secondary w-100">Reset</a></div>
 </form>
 
 <div class="table-responsive">
@@ -143,7 +146,7 @@ $degrees = fetchAll("SELECT id, degreename, degreenamear, interimperiod, nextdeg
                             <h5 class="modal-title"><?= $isAr ? 'ترقية موظف' : 'Promote Employee' ?></h5>
                             <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                         </div>
-                        <form method="post" action="index.php?module=empseniority">
+                        <form method="post" action="?module=empseniority">
                             <div class="modal-body">
                                 <input type="hidden" name="promote_empid" value="<?= $e['id'] ?>">
                                 <div class="mb-3">

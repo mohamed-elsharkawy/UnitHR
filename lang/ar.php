@@ -459,5 +459,7 @@ $lang['error'] = 'خطأ';
 $lang['warning'] = 'تحذير';
 $lang['info'] = 'معلومات';
 
+$lang['dir'] = 'rtl';
+$lang['is_rtl'] = true;
 return $lang;
 ?>

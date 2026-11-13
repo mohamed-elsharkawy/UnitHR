@@ -48,34 +48,71 @@ function attempt_login($login, $password, $otp = '') {
         return ['ok' => false, 'error' => 'Invalid username/email or password.'];
     }
 
-    // Determine permissions record
+    // Determine permissions record(s). A user may hold multiple permission
+    // records (uhr_user_permissions); effective access is the OR-merge of all
+    // selected records. Falls back to the legacy permissionid column.
     $perms = [];
     $isAdmin = !empty($user['is_admin']);
     $isSuper = !empty($user['is_superadmin']);
-    if ($isSuper || $isAdmin) {
+    $hrAdmin = 0;
+    $hrUser = 0;
+    $anyAdminPerm = 0;
+
+    $junctionRows = fetchAll(
+        "SELECT p.* FROM " . table('permissions') . " p
+         JOIN " . table('user_permissions') . " up ON up.permission_id = p.id
+         WHERE up.user_id = ? AND up.omitted = 0 AND p.omitted = 0
+         ORDER BY p.id ASC",
+        [(int)$user['id']]
+    );
+    if (empty($junctionRows) && !empty($user['permissionid'])) {
+        // Legacy single permission: use it and backfill the junction table.
+        $pStmt = $pdo->prepare("SELECT * FROM " . table('permissions') . " WHERE id = ? AND omitted = 0 LIMIT 1");
+        $pStmt->execute([(int)$user['permissionid']]);
+        $p = $pStmt->fetch();
+        if ($p) {
+            $junctionRows = [$p];
+            q("INSERT INTO " . table('user_permissions') . "
+                (rguid,user_id,permission_id,dtadded,addedbyid,addedby,addedbyname,addedbynamear,omitted)
+                VALUES (?,?,?,NOW(),?,?,?,?,0)",
+                [bin2hex(random_bytes(16)), (int)$user['id'], (int)$user['permissionid'], 1, 'System', 'System', 'System']);
+        }
+    }
+
+    foreach ($junctionRows as $p) {
+        $mod = $p['modulename'];
+        $rec = [
+            'isadmin' => !empty($p['isadmin']),
+            'canadd'  => !empty($p['canadd']),
+            'canedit' => !empty($p['canedit']),
+            'candel'  => !empty($p['candel']),
+        ];
+        if (!isset($perms[$mod])) {
+            $perms[$mod] = $rec;
+        } else {
+            $perms[$mod]['isadmin'] = $perms[$mod]['isadmin'] || $rec['isadmin'];
+            $perms[$mod]['canadd']  = $perms[$mod]['canadd']  || $rec['canadd'];
+            $perms[$mod]['canedit'] = $perms[$mod]['canedit'] || $rec['canedit'];
+            $perms[$mod]['candel']  = $perms[$mod]['candel']  || $rec['candel'];
+        }
+        if (!empty($p['isadmin'])) $anyAdminPerm = 1;
+        if (!empty($p['ishradmin'])) $hrAdmin = 1;
+        if (!empty($p['ishruser']))  $hrUser = 1;
+    }
+
+    $isAdmin = $isAdmin || $isSuper || $anyAdminPerm;
+
+    if ($isAdmin) {
         $perms['all_modules'] = true;
         $perms['_is_admin'] = 1;
         $perms['_is_superadmin'] = $isSuper ? 1 : 0;
         $perms['_is_hradmin'] = 1;
         $perms['_is_hruser'] = 1;
     } else {
-        if (!empty($user['permissionid'])) {
-            $pStmt = $pdo->prepare("SELECT * FROM " . table('permissions') . " WHERE id = ? AND omitted = 0 LIMIT 1");
-            $pStmt->execute([(int)$user['permissionid']]);
-            $p = $pStmt->fetch();
-            if ($p) {
-                $perms[$p['modulename']] = [
-                    'isadmin' => !empty($p['isadmin']),
-                    'canadd'  => !empty($p['canadd']),
-                    'canedit' => !empty($p['canedit']),
-                    'candel'  => !empty($p['candel']),
-                ];
-                $perms['_is_hradmin'] = !empty($p['ishradmin']) ? 1 : 0;
-                $perms['_is_hruser']  = !empty($p['ishruser']) ? 1 : 0;
-                $perms['_is_admin']   = 0;
-                $perms['_is_superadmin'] = 0;
-            }
-        }
+        $perms['_is_admin'] = 0;
+        $perms['_is_superadmin'] = 0;
+        $perms['_is_hradmin'] = $hrAdmin;
+        $perms['_is_hruser'] = $hrUser;
     }
 
     // OTP requirement for admins and HR staff
@@ -84,15 +121,15 @@ function attempt_login($login, $password, $otp = '') {
     if ($needsOtp) {
         if (!empty($user['otp_secret']) && !empty($user['otp_enabled'])) {
             // Password correct but OTP needed - store pending state, do NOT complete login yet
-            $_SESSION['otp_pending'] = 1;
-            $_SESSION['otp_pending_user'] = $user;
-            $_SESSION['otp_pending_perms'] = $perms;
-            $_SESSION['otp_pending_needsOtp'] = $needsOtp;
+            $_SESSION[UHR_SESSION_KEY]['otp_pending'] = 1;
+            $_SESSION[UHR_SESSION_KEY]['otp_pending_user'] = $user;
+            $_SESSION[UHR_SESSION_KEY]['otp_pending_perms'] = $perms;
+            $_SESSION[UHR_SESSION_KEY]['otp_pending_needsOtp'] = $needsOtp;
             return ['ok' => false, 'otp_pending' => true, 'error' => ''];
         } else {
             // First-time login with no OTP secret configured: allow login but force setup
-            $_SESSION['otp_force_setup_user'] = (int)$user['id'];
-            $_SESSION['otp_setup_perms'] = $perms;
+            $_SESSION[UHR_SESSION_KEY]['otp_force_setup_user'] = (int)$user['id'];
+            $_SESSION[UHR_SESSION_KEY]['otp_setup_perms'] = $perms;
             return ['ok' => true, 'otp_setup_required' => true, 'user' => $user];
         }
     }
@@ -133,8 +170,8 @@ function complete_login($user, $perms, $needsOtp) {
             $user['editedbynamear'] ?? $user['username'],
         ]);
 
-    $_SESSION['user_id'] = (int)$user['id'];
-    $_SESSION['user'] = [
+    $_SESSION[UHR_SESSION_KEY]['user_id'] = (int)$user['id'];
+    $_SESSION[UHR_SESSION_KEY]['user'] = [
         'id' => (int)$user['id'],
         'username' => $user['username'],
         'username_ar' => $user['addedbynamear'] ?? $user['username'],
@@ -149,13 +186,13 @@ function complete_login($user, $perms, $needsOtp) {
         'is_hruser' => !empty($perms['_is_hruser']) ? 1 : 0,
         'otp_enabled' => !empty($user['otp_enabled']) ? 1 : 0,
     ];
-    $_SESSION['user_permissions'] = $perms;
-    $_SESSION['otp_verified'] = $needsOtp ? 1 : 0;
+    $_SESSION[UHR_SESSION_KEY]['user_permissions'] = $perms;
+    $_SESSION[UHR_SESSION_KEY]['otp_verified'] = $needsOtp ? 1 : 0;
 
     // Clear pending state
-    unset($_SESSION['otp_pending'], $_SESSION['otp_pending_user'], $_SESSION['otp_pending_perms'], $_SESSION['otp_pending_needsOtp']);
+    unset($_SESSION[UHR_SESSION_KEY]['otp_pending'], $_SESSION[UHR_SESSION_KEY]['otp_pending_user'], $_SESSION[UHR_SESSION_KEY]['otp_pending_perms'], $_SESSION[UHR_SESSION_KEY]['otp_pending_needsOtp']);
 
-    return ['ok' => true, 'user' => $_SESSION['user']];
+    return ['ok' => true, 'user' => $_SESSION[UHR_SESSION_KEY]['user']];
 }
 
 /**
@@ -163,13 +200,13 @@ function complete_login($user, $perms, $needsOtp) {
  * On failure, logs the attempt and clears the session.
  */
 function verify_otp_login($code) {
-    if (empty($_SESSION['otp_pending']) || empty($_SESSION['otp_pending_user'])) {
+    if (empty($_SESSION[UHR_SESSION_KEY]['otp_pending']) || empty($_SESSION[UHR_SESSION_KEY]['otp_pending_user'])) {
         return ['ok' => false, 'error' => 'No pending login. Please start over.'];
     }
 
-    $user = $_SESSION['otp_pending_user'];
-    $perms = $_SESSION['otp_pending_perms'] ?? [];
-    $needsOtp = !empty($_SESSION['otp_pending_needsOtp']);
+    $user = $_SESSION[UHR_SESSION_KEY]['otp_pending_user'];
+    $perms = $_SESSION[UHR_SESSION_KEY]['otp_pending_perms'] ?? [];
+    $needsOtp = !empty($_SESSION[UHR_SESSION_KEY]['otp_pending_needsOtp']);
 
     if (empty($user['otp_secret']) || !otp_verify($user['otp_secret'], $code)) {
         // OTP failed - log the attempt
@@ -196,7 +233,7 @@ function verify_otp_login($code) {
                 $user['editedbynamear'] ?? $user['username'],
             ]);
 
-        unset($_SESSION['otp_pending'], $_SESSION['otp_pending_user'], $_SESSION['otp_pending_perms'], $_SESSION['otp_pending_needsOtp']);
+        unset($_SESSION[UHR_SESSION_KEY]['otp_pending'], $_SESSION[UHR_SESSION_KEY]['otp_pending_user'], $_SESSION[UHR_SESSION_KEY]['otp_pending_perms'], $_SESSION[UHR_SESSION_KEY]['otp_pending_needsOtp']);
         return ['ok' => false, 'error' => 'Invalid OTP code. Please try again.'];
     }
 
@@ -228,11 +265,12 @@ function logout() {
                 $u['username_ar'],
             ]);
     }
-    $_SESSION = [];
-    if (ini_get('session.use_cookies')) {
-        setcookie(session_name(), '', time() - 3600, '/');
-    }
-    session_destroy();
-    header('Location: index.php');
+    // Clear only this application's namespace. One server may host several
+    // OpenFrame apps that share a single PHP session; other apps must keep
+    // working. session_regenerate_id(true) rotates the session id so nothing
+    // of this app survives, while preserving the other apps' namespaces.
+    unset($_SESSION[UHR_SESSION_KEY]);
+    session_regenerate_id(true);
+    header('Location: ./');
     exit;
 }

@@ -171,7 +171,7 @@ function run_table_module($cfg) {
                     $hook = 'module_'.$table.'_after_save';
                     if (function_exists($hook)) { $hook($data, true, lastInsertId()); }
                     set_flash('success', 'Record added successfully.');
-                    header('Location: index.php?module='.$module); exit;
+                    header('Location: ?module='.$module); exit;
                 } else {
                     set_flash('error', db_error() ?: 'Failed to add record.');
                 }
@@ -179,12 +179,18 @@ function run_table_module($cfg) {
         }
         echo '<div class="d-flex justify-content-between align-items-center mb-3">
                 <h2><i class="bi bi-plus-lg me-2"></i>'.htmlspecialchars(lang()==='ar'?$titleAr:$title).'</h2>
-                <a href="index.php?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+                <a href="?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
               </div>';
-        echo '<form method="post" action="index.php?module='.$module.'&a=add">';
-        foreach ($allFields as $f) { echo field_input($f, $data[$f['name']] ?? ''); }
+        echo '<form method="post" action="?module='.$module.'&a=add">';
+        foreach ($allFields as $f) {
+            $v = $data[$f['name']] ?? '';
+            if (($f['type'] ?? '') === 'file' && !empty($f['current_path_field'])) {
+                $v = $data[$f['current_path_field']] ?? '';
+            }
+            echo field_input($f, $v);
+        }
         echo '<div class="d-grid gap-2"><button class="btn btn-primary">Save</button>
-              <a href="index.php?module='.$module.'" class="btn btn-secondary">Cancel</a></div>';
+              <a href="?module='.$module.'" class="btn btn-secondary">Cancel</a></div>';
         echo '</form>';
         return;
     }
@@ -193,7 +199,7 @@ function run_table_module($cfg) {
     if ($action === 'edit') {
         require_permission($module, 'edit');
         $row = fetchRow("SELECT * FROM `".table($table)."` WHERE `$pk` = ? AND omitted = 0 LIMIT 1", [$id]);
-        if (!$row) { set_flash('error','Record not found.'); header('Location: index.php?module='.$module); exit; }
+        if (!$row) { set_flash('error','Record not found.'); header('Location: ?module='.$module); exit; }
         if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             shadow_log($table, $id, $row, 'update');
             // Extract extra aliases for this handler
@@ -237,7 +243,7 @@ function run_table_module($cfg) {
                     $hook = 'module_'.$table.'_after_save';
                     if (function_exists($hook)) { $hook($data, false, $id, $row); }
                     set_flash('success','Record updated. Previous version saved to audit log.');
-                    header('Location: index.php?module='.$module); exit;
+                    header('Location: ?module='.$module); exit;
                 } else {
                     set_flash('error', db_error() ?: 'Failed to update record.');
                 }
@@ -246,12 +252,18 @@ function run_table_module($cfg) {
         }
         echo '<div class="d-flex justify-content-between align-items-center mb-3">
                 <h2><i class="bi bi-pencil-square me-2"></i>'.htmlspecialchars(lang()==='ar'?$titleAr:$title).'</h2>
-                <a href="index.php?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+                <a href="?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
               </div>';
-        echo '<form method="post" action="index.php?module='.$module.'&a=edit&id='.$id.'">';
-        foreach ($allFields as $f) { echo field_input($f, $row[$f['name']] ?? ''); }
+        echo '<form method="post" action="?module='.$module.'&a=edit&id='.$id.'">';
+        foreach ($allFields as $f) {
+            $v = $row[$f['name']] ?? '';
+            if (($f['type'] ?? '') === 'file' && !empty($f['current_path_field'])) {
+                $v = $row[$f['current_path_field']] ?? '';
+            }
+            echo field_input($f, $v);
+        }
         echo '<div class="d-grid gap-2"><button class="btn btn-primary">Update</button>
-              <a href="index.php?module='.$module.'" class="btn btn-secondary">Cancel</a></div>';
+              <a href="?module='.$module.'" class="btn btn-secondary">Cancel</a></div>';
         echo '</form>';
         return;
     }
@@ -264,8 +276,8 @@ function run_table_module($cfg) {
             echo '<div class="alert alert-warning">
                     <h4>Omit record?</h4>
                     <p>Records are not actually deleted; they are marked as omitted and hidden from reports.</p>
-                    <a href="index.php?module='.$module.'&a=del&id='.$id.'&confirm=1" class="btn btn-danger">Yes, Omit</a>
-                    <a href="index.php?module='.$module.'" class="btn btn-secondary">Cancel</a>
+                    <a href="?module='.$module.'&a=del&id='.$id.'&confirm=1" class="btn btn-danger">Yes, Omit</a>
+                    <a href="?module='.$module.'" class="btn btn-secondary">Cancel</a>
                   </div>';
             return;
         }
@@ -273,7 +285,7 @@ function run_table_module($cfg) {
         if ($row) { shadow_log($table, $id, $row, 'omit'); }
         q("UPDATE `".table($table)."` SET omitted = 1 WHERE `$pk` = ?", [$id]);
         set_flash('success','Record omitted.');
-        header('Location: index.php?module='.$module);
+        header('Location: ?module='.$module);
         exit;
     }
 
@@ -281,10 +293,10 @@ function run_table_module($cfg) {
     if ($action === 'view') {
         require_permission($module, 'view');
         $row = fetchRow("SELECT * FROM `".table($table)."` WHERE `$pk` = ? AND omitted = 0 LIMIT 1", [$id]);
-        if (!$row) { set_flash('error','Record not found.'); header('Location: index.php?module='.$module); exit; }
+        if (!$row) { set_flash('error','Record not found.'); header('Location: ?module='.$module); exit; }
         echo '<div class="d-flex justify-content-between align-items-center mb-3">
                 <h2><i class="bi bi-eye me-2"></i>'.htmlspecialchars(lang()==='ar'?$titleAr:$title).'</h2>
-                <a href="index.php?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+                <a href="?module='.$module.'" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
               </div>';
         echo '<div class="card"><div class="card-body">';
         $viewFields = fields_for_lang($allFields);
@@ -293,8 +305,8 @@ function run_table_module($cfg) {
             echo '<p><strong>'.htmlspecialchars(lang()==='ar' && !empty($f['label_ar']) ? $f['label_ar'] : $f['label']).':</strong> '.htmlspecialchars((string)$val, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8').'</p>';
         }
         echo '</div></div>';
-        if ($canEdit) echo '<a href="index.php?module='.$module.'&a=edit&id='.$id.'" class="btn btn-warning mt-3"><i class="bi bi-pencil me-1"></i>'.(lang()==='ar'?'تعديل':'Edit').'</a>';
-        echo ' <a href="index.php?module='.$module.'" class="btn btn-secondary mt-3">'.(lang()==='ar'?'العودة':'Back').'</a>';
+        if ($canEdit) echo '<a href="?module='.$module.'&a=edit&id='.$id.'" class="btn btn-warning mt-3"><i class="bi bi-pencil me-1"></i>'.(lang()==='ar'?'تعديل':'Edit').'</a>';
+        echo ' <a href="?module='.$module.'" class="btn btn-secondary mt-3">'.(lang()==='ar'?'العودة':'Back').'</a>';
         return;
     }
 
@@ -396,18 +408,23 @@ function run_table_module($cfg) {
     echo '<div class="d-flex justify-content-between align-items-center mb-3">
             <h2><i class="bi bi-table me-2"></i>'.htmlspecialchars($dispTitle).'</h2>
             <div>
-              <a href="index.php?module='.$module.'&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1"><i class="bi bi-file-earmark-csv me-1"></i>CSV</a>
-              <a href="index.php?module='.$module.'&a=export&fmt=xlsx" class="btn btn-outline-success btn-sm me-1"><i class="bi bi-file-earmark-excel me-1"></i>XLSX</a>
-              <a href="index.php?module='.$module.'&a=export&fmt=docx" class="btn btn-outline-primary btn-sm me-1"><i class="bi bi-file-earmark-word me-1"></i>Word</a>
-              <a href="index.php?module='.$module.'&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
-              '.($canAdd ? '<a href="index.php?module='.$module.'&a=add" class="btn btn-primary ms-2"><i class="bi bi-plus me-1"></i>Add New</a>' : '').'
+              <a href="?module='.$module.'&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1"><i class="bi bi-file-earmark-csv me-1"></i>CSV</a>
+              <a href="?module='.$module.'&a=export&fmt=xlsx" class="btn btn-outline-success btn-sm me-1"><i class="bi bi-file-earmark-excel me-1"></i>XLSX</a>
+              <a href="?module='.$module.'&a=export&fmt=docx" class="btn btn-outline-primary btn-sm me-1"><i class="bi bi-file-earmark-word me-1"></i>Word</a>
+              <a href="?module='.$module.'&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1"><i class="bi bi-file-earmark-pdf me-1"></i>PDF</a>
+              '.($canAdd ? '<a href="?module='.$module.'&a=add" class="btn btn-primary ms-2"><i class="bi bi-plus me-1"></i>Add New</a>' : '').'
             </div>
           </div>';
+		  if (lang() === 'ar'){
+			  $searchtstr = 'بحث (عربي/إنجليزي)...';
+		  }else{
+			  $searchtstr = 'Search (Arabic/English)...';
+		  }
     echo '<form method="get" class="row g-2 mb-3 align-items-end">
             <input type="hidden" name="module" value="'.$module.'">
-            <div class="col-md-4"><input type="search" name="search" class="form-control" value="'.htmlspecialchars($search).'" placeholder="Search (Arabic/English)..."></div>
+            <div class="col-md-4"><input type="search" name="search" class="form-control" value="'.htmlspecialchars($search).'" placeholder="' . $searchtstr . '"></div>
             <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
-            <div class="col-md-2"><a href="index.php?module='.$module.'" class="btn btn-outline-secondary w-100">Reset</a></div>
+            <div class="col-md-2"><a href="?module='.$module.'" class="btn btn-outline-secondary w-100">Reset</a></div>
           </form>';
     if (count($rows) === 0) {
         echo '<div class="alert alert-info">No records found.</div>';
@@ -432,10 +449,10 @@ function run_table_module($cfg) {
             }
             $recId = $r[$pk] ?? 0;
             echo '<td class="d-flex gap-1">';
-            echo '<a href="index.php?module='.$module.'&a=view&id='.$recId.'" class="btn btn-sm btn-info"><i class="bi bi-eye"></i></a>';
-            if ($canEdit) echo '<a href="index.php?module='.$module.'&a=edit&id='.$recId.'" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a>';
-            if ($module === 'users' && $canEdit) echo '<a href="index.php?module='.$module.'&a=reset-otp&id='.$recId.'" class="btn btn-sm btn-secondary" onclick="return confirm(\'Reset OTP for this user?\')" title="Reset OTP"><i class="bi bi-key"></i></a>';
-            if ($canDel) echo '<a href="index.php?module='.$module.'&a=del&id='.$recId.'" class="btn btn-sm btn-danger" onclick="return confirm(\'Omit this record?\')"><i class="bi bi-trash"></i></a>';
+            echo '<a href="?module='.$module.'&a=view&id='.$recId.'" class="btn btn-sm btn-info"><i class="bi bi-eye"></i></a>';
+            if ($canEdit) echo '<a href="?module='.$module.'&a=edit&id='.$recId.'" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a>';
+            if ($module === 'users' && $canEdit) echo '<a href="?module='.$module.'&a=reset-otp&id='.$recId.'" class="btn btn-sm btn-secondary" onclick="return confirm(\'Reset OTP for this user?\')" title="Reset OTP"><i class="bi bi-key"></i></a>';
+            if ($canDel) echo '<a href="?module='.$module.'&a=del&id='.$recId.'" class="btn btn-sm btn-danger" onclick="return confirm(\'Omit this record?\')"><i class="bi bi-trash"></i></a>';
             echo '</td></tr>';
         }
         echo '</tbody></table></div>';

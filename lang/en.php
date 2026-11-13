@@ -467,5 +467,7 @@ $lang['error'] = 'Error';
 $lang['warning'] = 'Warning';
 $lang['info'] = 'Info';
 
+$lang['dir'] = 'ltr';
+$lang['is_rtl'] = false;
 return $lang;
 ?>

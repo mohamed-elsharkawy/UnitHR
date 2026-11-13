@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 /**
  * LeavesBalances - custom module (per fiscal year, per leave type, linked to employee)
  */
@@ -38,8 +40,8 @@ if ($action === 'export') {
                              b.usedbalance AS 'Used', b.remainingbalance AS 'Remaining'
                       FROM " . table('leavesbalances') . " b
                       WHERE $where ORDER BY b.id DESC", $params);
-    if ($rows === false) { set_flash('error', 'Database not available.'); header('Location: index.php?module=home'); exit; }
-    if (empty($rows)) { set_flash('error', 'No data to export.'); header('Location: index.php?module=leavesbalances'); exit; }
+    if ($rows === false) { set_flash('error', 'Database not available.'); header('Location: ?module=home'); exit; }
+    if (empty($rows)) { set_flash('error', 'No data to export.'); header('Location: ?module=leavesbalances'); exit; }
     $headers = array_keys($rows[0]);
     $dataRows = [];
     foreach ($rows as $r) { $dataRows[] = array_values($r); }
@@ -82,7 +84,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'add') {
         $dup = fetchRow("SELECT id FROM " . table('leavesbalances') . " WHERE empid=? AND fiscalyearid=? AND leavetypeid=? AND omitted=0 LIMIT 1", [$empid, $fyid, $ltid]);
         if ($dup) {
             set_flash('error', 'A leave balance already exists for this employee, fiscal year, and leave type.');
-            header('Location: index.php?module=leavesbalances&a=add'); exit;
+            header('Location: ?module=leavesbalances&a=add'); exit;
         } else {
             $now = date('Y-m-d H:i:s');
             $an = $u['username_ar'] ?? $u['username'];
@@ -102,7 +104,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'add') {
             $cols[] = '`omitted`';    $vals[] = '?'; $params[] = 0;
             q("INSERT INTO " . table('leavesbalances') . " (" . implode(',', $cols) . ") VALUES (" . implode(',', $vals) . ")", $params);
             set_flash('success', 'Leave balance added.');
-            header('Location: index.php?module=leavesbalances'); exit;
+            header('Location: ?module=leavesbalances'); exit;
         }
     }
     // repopulate row for form on error
@@ -144,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'edit' && $id) {
         $dup = fetchRow("SELECT id FROM " . table('leavesbalances') . " WHERE empid=? AND fiscalyearid=? AND leavetypeid=? AND id != ? AND omitted=0 LIMIT 1", [$empid, $fyid, $ltid, $id]);
         if ($dup) {
             set_flash('error', 'A leave balance already exists for this employee, fiscal year, and leave type.');
-            header('Location: index.php?module=leavesbalances&a=edit&id=' . $id); exit;
+            header('Location: ?module=leavesbalances&a=edit&id=' . $id); exit;
         }
         $now = date('Y-m-d H:i:s');
         $an = $u['username_ar'] ?? $u['username'];
@@ -159,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'edit' && $id) {
         $params[] = $id;
         q("UPDATE " . table('leavesbalances') . " SET " . implode(',', $sets) . " WHERE id=?", $params);
         set_flash('success', 'Leave balance updated.');
-        header('Location: index.php?module=leavesbalances'); exit;
+        header('Location: ?module=leavesbalances'); exit;
     }
     $row = array_merge($row ?? [], $data);
 }
@@ -172,12 +174,12 @@ if ($action === 'del' && $id) {
         if ($row) shadow_log('leavesbalances', $id, $row, 'omit');
         q("UPDATE " . table('leavesbalances') . " SET omitted=1 WHERE id=?", [$id]);
         set_flash('success', 'Leave balance omitted.');
-        header('Location: index.php?module=leavesbalances'); exit;
+        header('Location: ?module=leavesbalances'); exit;
     }
     echo '<div class="alert alert-warning">
             <h4>Omit leave balance?</h4>
-            <a href="index.php?module=leavesbalances&a=del&id='.$id.'&confirm=1" class="btn btn-danger">Yes, Omit</a>
-            <a href="index.php?module=leavesbalances" class="btn btn-secondary">Cancel</a>
+            <a href="?module=leavesbalances&a=del&id='.$id.'&confirm=1" class="btn btn-danger">Yes, Omit</a>
+            <a href="?module=leavesbalances" class="btn btn-secondary">Cancel</a>
           </div>';
     return;
 }
@@ -187,9 +189,9 @@ if ($action === 'add') {
     require_permission($module, 'add');
     echo '<div class="d-flex justify-content-between align-items-center mb-3">
             <h2><i class="bi bi-plus-lg me-2"></i>'.($isAr ? 'إضافة رصيد إجازة' : 'Add Leave Balance').'</h2>
-            <a href="index.php?module=leavesbalances" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+            <a href="?module=leavesbalances" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
           </div>';
-    echo '<form method="post" action="index.php?module=leavesbalances&a=add">';
+    echo '<form method="post" action="?module=leavesbalances&a=add">';
     echo '<div class="mb-3"><label class="form-label">'.($isAr ? 'الموظف' : 'Employee').'</label>'
         .'<select name="empid" class="form-select required"><option value="">-- Select --</option>';
     foreach ($employees as $e) {
@@ -231,7 +233,7 @@ if ($action === 'add') {
     updateRemaining();
     </script>';
     echo '<div class="d-grid gap-2"><button class="btn btn-primary">Save</button>
-          <a href="index.php?module=leavesbalances" class="btn btn-secondary">Cancel</a></div>';
+          <a href="?module=leavesbalances" class="btn btn-secondary">Cancel</a></div>';
     echo '</form>';
     return;
 }
@@ -241,9 +243,9 @@ if ($action === 'edit' && $id && $row) {
     require_permission($module, 'edit');
     echo '<div class="d-flex justify-content-between align-items-center mb-3">
             <h2><i class="bi bi-pencil-square me-2"></i>'.($isAr ? 'تعديل رصيد إجازة' : 'Edit Leave Balance').'</h2>
-            <a href="index.php?module=leavesbalances" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+            <a href="?module=leavesbalances" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
           </div>';
-    echo '<form method="post" action="index.php?module=leavesbalances&a=edit&id='.$id.'">';
+    echo '<form method="post" action="?module=leavesbalances&a=edit&id='.$id.'">';
     echo '<div class="mb-3"><label class="form-label">'.($isAr ? 'الموظف' : 'Employee').'</label>'
         .'<select name="empid" class="form-select"><option value="">-- Select --</option>';
     foreach ($employees as $e) {
@@ -286,7 +288,7 @@ if ($action === 'edit' && $id && $row) {
     });
     </script>';
     echo '<div class="d-grid gap-2"><button class="btn btn-primary">Update</button>
-          <a href="index.php?module=leavesbalances" class="btn btn-secondary">Cancel</a></div>';
+          <a href="?module=leavesbalances" class="btn btn-secondary">Cancel</a></div>';
     echo '</form>';
     return;
 }
@@ -309,18 +311,18 @@ $rows = fetchAll("SELECT b.*, e.empfullname, e.empfullnamear
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-wallet2 me-2"></i><?= $isAr ? 'أرصدة الإجازات' : 'Leave Balances' ?></h2>
     <div>
-        <?php if ($canAdd): ?><a href="index.php?module=leavesbalances&a=add" class="btn btn-primary me-1"><i class="bi bi-plus me-1"></i><?= $isAr ? 'إضافة' : 'Add' ?></a><?php endif; ?>
-        <a href="index.php?module=leavesbalances&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1">CSV</a>
-        <a href="index.php?module=leavesbalances&a=export&fmt=xlsx" class="btn btn-outline-success btn-sm me-1">XLSX</a>
-        <a href="index.php?module=leavesbalances&a=export&fmt=docx" class="btn btn-outline-primary btn-sm me-1">Word</a>
-        <a href="index.php?module=leavesbalances&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
+        <?php if ($canAdd): ?><a href="?module=leavesbalances&a=add" class="btn btn-primary me-1"><i class="bi bi-plus me-1"></i><?= $isAr ? 'إضافة' : 'Add' ?></a><?php endif; ?>
+        <a href="?module=leavesbalances&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1">CSV</a>
+        <a href="?module=leavesbalances&a=export&fmt=xlsx" class="btn btn-outline-success btn-sm me-1">XLSX</a>
+        <a href="?module=leavesbalances&a=export&fmt=docx" class="btn btn-outline-primary btn-sm me-1">Word</a>
+        <a href="?module=leavesbalances&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
     </div>
 </div>
 <form method="get" class="row g-2 mb-3 align-items-end">
     <input type="hidden" name="module" value="leavesbalances">
-    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="Search (Arabic/English)..."></div>
+    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="<?= $isAr ? 'بحث (عربي/إنجليزي)...' : 'Search (Arabic/English)...' ?>"></div>
     <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
-    <div class="col-md-2"><a href="index.php?module=leavesbalances" class="btn btn-outline-secondary w-100">Reset</a></div>
+    <div class="col-md-2"><a href="?module=leavesbalances" class="btn btn-outline-secondary w-100">Reset</a></div>
 </form>
 <div class="row mt-3 justify-content-center">
 <div class="col-12 col-lg-11">
@@ -352,8 +354,8 @@ $rows = fetchAll("SELECT b.*, e.empfullname, e.empfullnamear
 <td><?= (int)($r['usedbalance'] ?? 0) ?></td>
 <td><?= (int)($r['remainingbalance'] ?? 0) ?></td>
 <td class="d-flex gap-1">
-    <?php if ($canEdit): ?><a href="index.php?module=leavesbalances&a=edit&id=<?= $r['id'] ?>" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a><?php endif; ?>
-    <?php if ($canDel): ?><a href="index.php?module=leavesbalances&a=del&id=<?= $r['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Omit this balance?')"><i class="bi bi-trash"></i></a><?php endif; ?>
+    <?php if ($canEdit): ?><a href="?module=leavesbalances&a=edit&id=<?= $r['id'] ?>" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a><?php endif; ?>
+    <?php if ($canDel): ?><a href="?module=leavesbalances&a=del&id=<?= $r['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Omit this balance?')"><i class="bi bi-trash"></i></a><?php endif; ?>
 </td>
 </tr>
 <?php endforeach; ?>

@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 /**
  * Reports - export data in CSV, XLSX, Word, PDF (offline assets).
  */
@@ -35,6 +37,25 @@ $reports = [
                            b.usedbalance AS 'Used', b.remainingbalance AS 'Remaining'
                     FROM " . table('leavesbalances') . " b WHERE b.omitted=0 ORDER BY b.id DESC",
     ],
+    'archives' => [
+        'title' => $isAr ? 'تقرير أرشيف الموظفين' : 'Employees Archives Report',
+        'sql'   => "SELECT a.empfullname AS 'Employee', a.empfullnamear AS 'Employee (Arabic)',
+                           a.nid AS 'NID', a.documenttypename AS 'Document Type',
+                           a.documenttypenamear AS 'Document Type (Arabic)',
+                           a.documentname AS 'Document Name', a.documentpath AS 'File Path',
+                           a.notes AS 'Notes'
+                    FROM " . table('emparchives') . " a WHERE a.omitted=0 ORDER BY a.id DESC",
+    ],
+    'promotions' => [
+        'title' => $isAr ? 'تقرير الترقيات' : 'Manual Promotions Report',
+        'sql'   => "SELECT p.empfullname AS 'Employee', p.empfullnamear AS 'Employee (Arabic)',
+                           p.promotiondate AS 'Promotion Date', p.degreename AS 'Degree Acquired',
+                           p.degreenamear AS 'Degree Acquired (Arabic)',
+                           p.degreeacquireddate AS 'Degree Acquired Date',
+                           p.decisionnumber AS 'Decision Number', p.decisiondate AS 'Decision Date',
+                           p.senioritydate AS 'Seniority Date', p.decisionfilepath AS 'Decision File'
+                    FROM " . table('emppromotions') . " p WHERE p.omitted=0 ORDER BY p.id DESC",
+    ],
 ];
 
 $report = $_GET['report'] ?? '';
@@ -45,12 +66,12 @@ if ($fmt !== '' && isset($reports[$report])) {
     $rows = fetchAll($rep['sql']);
     if ($rows === false) {
         set_flash('error', 'Database not available.');
-        header('Location: index.php?module=reports');
+        header('Location: ?module=reports');
         exit;
     }
     if (empty($rows)) {
         set_flash('error', 'No data to export.');
-        header('Location: index.php?module=reports');
+        header('Location: ?module=reports');
         exit;
     }
     $headers = array_keys($rows[0]);
@@ -81,7 +102,7 @@ $formats = [
                 <p class="text-muted small"><?= $isAr ? 'اختر صيغة التصدير' : 'Choose an export format' ?></p>
                 <div class="d-flex flex-wrap gap-1">
                     <?php foreach ($formats as $f => $label): ?>
-                    <a class="btn btn-sm btn-outline-primary" href="index.php?module=reports&amp;report=<?= urlencode($key) ?>&amp;fmt=<?= urlencode($f) ?>"><?= htmlspecialchars($label) ?></a>
+                    <a class="btn btn-sm btn-outline-primary" href="?module=reports&amp;report=<?= urlencode($key) ?>&amp;fmt=<?= urlencode($f) ?>"><?= htmlspecialchars($label) ?></a>
                     <?php endforeach; ?>
                 </div>
             </div>

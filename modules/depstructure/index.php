@@ -1,4 +1,6 @@
 <?php
+if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
+
 /**
  * DepStructure - custom module (hierarchy, type, manager name resolution)
  */
@@ -36,8 +38,8 @@ if ($action === 'export') {
                              deptype AS 'Type', deptypear AS 'Type (Arabic)',
                              managername AS 'Manager', managernamear AS 'Manager (Arabic)'
                       FROM " . table('depstructure') . " WHERE $where ORDER BY depname", $params);
-    if ($rows === false) { set_flash('error', 'Database not available.'); header('Location: index.php?module=home'); exit; }
-    if (empty($rows)) { set_flash('error', 'No data to export.'); header('Location: index.php?module=depstructure'); exit; }
+    if ($rows === false) { set_flash('error', 'Database not available.'); header('Location: ?module=home'); exit; }
+    if (empty($rows)) { set_flash('error', 'No data to export.'); header('Location: ?module=depstructure'); exit; }
     $headers = array_keys($rows[0]);
     $dataRows = [];
     foreach ($rows as $r) { $dataRows[] = array_values($r); }
@@ -104,7 +106,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['add', 'edit']))
             $cols[] = '`omitted`';    $vals[] = '?'; $params[] = 0;
             q("INSERT INTO " . table('depstructure') . " (" . implode(',', $cols) . ") VALUES (" . implode(',', $vals) . ")", $params);
             set_flash('success', 'Department added.');
-            header('Location: index.php?module=depstructure'); exit;
+            header('Location: ?module=depstructure'); exit;
         } elseif ($action === 'edit' && $id) {
             shadow_log('depstructure', $id, $row, 'update');
             $sets = []; $params = [];
@@ -117,7 +119,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['add', 'edit']))
             $params[] = $id;
             q("UPDATE " . table('depstructure') . " SET " . implode(',', $sets) . " WHERE id=?", $params);
             set_flash('success', 'Department updated.');
-            header('Location: index.php?module=depstructure'); exit;
+            header('Location: ?module=depstructure'); exit;
         }
     }
 }
@@ -134,13 +136,13 @@ if ($action === 'del' && $id) {
             q("UPDATE " . table('depstructure') . " SET omitted=1 WHERE id=?", [$id]);
             set_flash('success', 'Department omitted.');
         }
-        header('Location: index.php?module=depstructure'); exit;
+        header('Location: ?module=depstructure'); exit;
     }
     echo '<div class="alert alert-warning">
             <h4>Omit department?</h4>
             <p>Records are not deleted; they are marked omitted and hidden from reports.</p>
-            <a href="index.php?module=depstructure&a=del&id='.$id.'&confirm=1" class="btn btn-danger">Yes, Omit</a>
-            <a href="index.php?module=depstructure" class="btn btn-secondary">Cancel</a>
+            <a href="?module=depstructure&a=del&id='.$id.'&confirm=1" class="btn btn-danger">Yes, Omit</a>
+            <a href="?module=depstructure" class="btn btn-secondary">Cancel</a>
           </div>';
     return;
 }
@@ -150,9 +152,9 @@ if ($action === 'add') {
     $d = ['depname'=>'','depnamear'=>'','depparentid'=>'','deptypeid'=>'','managerid'=>''];
     echo '<div class="d-flex justify-content-between align-items-center mb-3">
             <h2><i class="bi bi-plus-lg me-2"></i>'.($isAr?'إضافة قسم':'Add Department').'</h2>
-            <a href="index.php?module=depstructure" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+            <a href="?module=depstructure" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
           </div>';
-    echo '<form method="post" action="index.php?module=depstructure&a=add">';
+    echo '<form method="post" action="?module=depstructure&a=add">';
     echo field_input(['name'=>'depname','label'=>'Department Name','label_ar'=>'اسم القسم','type'=>'text','required'=>true], $d['depname']);
     echo field_input(['name'=>'depnamear','label'=>'Department Name (Arabic)','label_ar'=>'اسم القسم بالعربية','type'=>'text','required'=>true], $d['depnamear']);
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'القسم الأصلي':'Parent Department').'</label>'
@@ -173,7 +175,7 @@ if ($action === 'add') {
     }
     echo '</select></div>';
     echo '<div class="d-grid gap-2"><button class="btn btn-primary">Save</button>
-          <a href="index.php?module=depstructure" class="btn btn-secondary">Cancel</a></div>';
+          <a href="?module=depstructure" class="btn btn-secondary">Cancel</a></div>';
     echo '</form>';
     return;
 }
@@ -182,9 +184,9 @@ if ($action === 'edit' && $id && $row) {
     require_permission($module, 'edit');
     echo '<div class="d-flex justify-content-between align-items-center mb-3">
             <h2><i class="bi bi-pencil-square me-2"></i>'.($isAr?'تعديل قسم':'Edit Department').'</h2>
-            <a href="index.php?module=depstructure" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+            <a href="?module=depstructure" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
           </div>';
-    echo '<form method="post" action="index.php?module=depstructure&a=edit&id='.$id.'">';
+    echo '<form method="post" action="?module=depstructure&a=edit&id='.$id.'">';
     echo field_input(['name'=>'depname','label'=>'Department Name','label_ar'=>'اسم القسم','type'=>'text','required'=>true], $row['depname']);
     echo field_input(['name'=>'depnamear','label'=>'Department Name (Arabic)','label_ar'=>'اسم القسم بالعربية','type'=>'text','required'=>true], $row['depnamear']);
     echo '<div class="mb-3"><label class="form-label">'.($isAr?'القسم الأصلي':'Parent Department').'</label>'
@@ -213,7 +215,7 @@ if ($action === 'edit' && $id && $row) {
     }
     echo '</select></div>';
     echo '<div class="d-grid gap-2"><button class="btn btn-primary">Update</button>
-          <a href="index.php?module=depstructure" class="btn btn-secondary">Cancel</a></div>';
+          <a href="?module=depstructure" class="btn btn-secondary">Cancel</a></div>';
     echo '</form>';
     return;
 }
@@ -222,13 +224,13 @@ if ($action === 'edit' && $id && $row) {
 if ($action === 'view' && $id) {
     require_permission($module, 'view');
     $row = fetchRow("SELECT * FROM " . table('depstructure') . " WHERE id=? AND omitted=0 LIMIT 1", [$id]);
-    if (!$row) { set_flash('error','Record not found.'); header('Location: index.php?module=depstructure'); exit; }
+    if (!$row) { set_flash('error','Record not found.'); header('Location: ?module=depstructure'); exit; }
     // children
     $children = fetchAll("SELECT id, depname, depnamear, deptype, managername FROM " . table('depstructure') . " WHERE depparentid=? AND omitted=0 ORDER BY depname", [$id]);
     ?>
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-diagram-3 me-2"></i><?= $isAr ? 'تفاصيل القسم' : 'Department Details' ?></h2>
-    <a href="index.php?module=depstructure" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
+    <a href="?module=depstructure" class="btn btn-secondary"><i class="bi bi-arrow-left me-1"></i>Back</a>
 </div>
 <div class="row">
     <div class="col-md-6">
@@ -253,7 +255,7 @@ if ($action === 'view' && $id) {
                     <?php foreach ($children as $ch): ?>
                     <li class="list-group-item d-flex justify-content-between">
                         <span><?= htmlspecialchars($isAr ? $ch['depnamear'] : $ch['depname']) ?></span>
-                        <a href="index.php?module=depstructure&a=view&id=<?= $ch['id'] ?>" class="btn btn-sm btn-info"><i class="bi bi-eye"></i></a>
+                        <a href="?module=depstructure&a=view&id=<?= $ch['id'] ?>" class="btn btn-sm btn-info"><i class="bi bi-eye"></i></a>
                     </li>
                     <?php endforeach; ?>
                 </ul>
@@ -263,11 +265,11 @@ if ($action === 'view' && $id) {
     </div>
 </div>
 <div class="mb-3">
-    <?php if ($canEdit): ?><a href="index.php?module=depstructure&a=edit&id=<?= $row['id'] ?>" class="btn btn-warning"><i class="bi bi-pencil me-1"></i><?= $isAr ? 'تعديل' : 'Edit' ?></a><?php endif; ?>
-    <a href="index.php?module=depstructure" class="btn btn-secondary ms-2"><?= $isAr ? 'العودة' : 'Back' ?></a>
+    <?php if ($canEdit): ?><a href="?module=depstructure&a=edit&id=<?= $row['id'] ?>" class="btn btn-warning"><i class="bi bi-pencil me-1"></i><?= $isAr ? 'تعديل' : 'Edit' ?></a><?php endif; ?>
+    <a href="?module=depstructure" class="btn btn-secondary ms-2"><?= $isAr ? 'العودة' : 'Back' ?></a>
 </div>
 <?php
-    // footer included by index.php
+    // footer included by 
 
     return;
 }
@@ -287,18 +289,18 @@ $rows = fetchAll("SELECT * FROM " . table('depstructure') . " WHERE $where ORDER
 <div class="d-flex justify-content-between align-items-center mb-3">
     <h2><i class="bi bi-diagram-3 me-2"></i><?= $isAr ? 'هيكلة الأقسام' : 'Department Structure' ?></h2>
     <div>
-        <?php if ($canAdd): ?><a href="index.php?module=depstructure&a=add" class="btn btn-primary me-1"><i class="bi bi-plus me-1"></i><?= $isAr ? 'إضافة' : 'Add' ?></a><?php endif; ?>
-        <a href="index.php?module=depstructure&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1">CSV</a>
-        <a href="index.php?module=depstructure&a=export&fmt=xlsx" class="btn btn-outline-success btn-sm me-1">XLSX</a>
-        <a href="index.php?module=depstructure&a=export&fmt=docx" class="btn btn-outline-primary btn-sm me-1">Word</a>
-        <a href="index.php?module=depstructure&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
+        <?php if ($canAdd): ?><a href="?module=depstructure&a=add" class="btn btn-primary me-1"><i class="bi bi-plus me-1"></i><?= $isAr ? 'إضافة' : 'Add' ?></a><?php endif; ?>
+        <a href="?module=depstructure&a=export&fmt=csv" class="btn btn-outline-secondary btn-sm me-1">CSV</a>
+        <a href="?module=depstructure&a=export&fmt=xlsx" class="btn btn-outline-success btn-sm me-1">XLSX</a>
+        <a href="?module=depstructure&a=export&fmt=docx" class="btn btn-outline-primary btn-sm me-1">Word</a>
+        <a href="?module=depstructure&a=export&fmt=pdf" class="btn btn-outline-danger btn-sm me-1">PDF</a>
     </div>
 </div>
 <form method="get" class="row g-2 mb-3 align-items-end">
     <input type="hidden" name="module" value="depstructure">
-    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="Search (Arabic/English)..."></div>
+    <div class="col-md-4"><input type="search" name="search" class="form-control" value="<?= htmlspecialchars($search) ?>" placeholder="<?= $isAr ? 'بحث (عربي/إنجليزي)...' : 'Search (Arabic/English)...' ?>"></div>
     <div class="col-md-2"><button class="btn btn-primary w-100">Search</button></div>
-    <div class="col-md-2"><a href="index.php?module=depstructure" class="btn btn-outline-secondary w-100">Reset</a></div>
+    <div class="col-md-2"><a href="?module=depstructure" class="btn btn-outline-secondary w-100">Reset</a></div>
 </form>
 <div class="table-responsive">
 <table class="table table-striped table-hover align-middle">
@@ -318,9 +320,9 @@ $rows = fetchAll("SELECT * FROM " . table('depstructure') . " WHERE $where ORDER
 <td><?= htmlspecialchars($isAr ? ($r['deptypear'] ?? '') : ($r['deptype'] ?? '')) ?></td>
 <td><?= htmlspecialchars($isAr ? ($r['managernamear'] ?? '') : ($r['managername'] ?? '')) ?></td>
 <td class="d-flex gap-1">
-    <a href="index.php?module=depstructure&a=view&id=<?= $r['id'] ?>" class="btn btn-sm btn-info"><i class="bi bi-eye"></i></a>
-    <?php if ($canEdit): ?><a href="index.php?module=depstructure&a=edit&id=<?= $r['id'] ?>" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a><?php endif; ?>
-    <?php if ($canDel): ?><a href="index.php?module=depstructure&a=del&id=<?= $r['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Omit this department?')"><i class="bi bi-trash"></i></a><?php endif; ?>
+    <a href="?module=depstructure&a=view&id=<?= $r['id'] ?>" class="btn btn-sm btn-info"><i class="bi bi-eye"></i></a>
+    <?php if ($canEdit): ?><a href="?module=depstructure&a=edit&id=<?= $r['id'] ?>" class="btn btn-sm btn-warning"><i class="bi bi-pencil"></i></a><?php endif; ?>
+    <?php if ($canDel): ?><a href="?module=depstructure&a=del&id=<?= $r['id'] ?>" class="btn btn-sm btn-danger" onclick="return confirm('Omit this department?')"><i class="bi bi-trash"></i></a><?php endif; ?>
 </td>
 </tr>
 <?php endforeach; ?>
