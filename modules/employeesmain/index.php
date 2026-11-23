@@ -467,19 +467,16 @@ if ($action === 'add') {
     jQuery(groupSel).on('change', function(){
       var g = this.value;
       var cur = degSel.value;
-      var cleared = false;
       if (cur !== '') {
         var curOpt = degSel.querySelector('option[value="' + cur + '"]');
         var curGroup = curOpt ? curOpt.getAttribute('data-group') : 'NOOPT';
         if (g !== '' && String(curGroup) !== String(g)) {
           degSel.value = '';
-          cleared = true;
         }
       }
       if (window.jQuery && jQuery.fn.select2) {
         jQuery(degSel).trigger('change');
       }
-      degSel.setAttribute('data-dbg', 'g=' + g + ' cur=' + cur + ' cleared=' + cleared);
     });
   }
   if (document.readyState === 'loading') {
@@ -592,19 +589,16 @@ echo <<<'JS'
     jQuery(groupSel).on('change', function(){
       var g = this.value;
       var cur = degSel.value;
-      var cleared = false;
       if (cur !== '') {
         var curOpt = degSel.querySelector('option[value="' + cur + '"]');
         var curGroup = curOpt ? curOpt.getAttribute('data-group') : 'NOOPT';
         if (g !== '' && String(curGroup) !== String(g)) {
           degSel.value = '';
-          cleared = true;
         }
       }
       if (window.jQuery && jQuery.fn.select2) {
         jQuery(degSel).trigger('change');
       }
-      degSel.setAttribute('data-dbg', 'g=' + g + ' cur=' + cur + ' cleared=' + cleared);
     });
   }
   if (document.readyState === 'loading') {

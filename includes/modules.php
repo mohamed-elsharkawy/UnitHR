@@ -124,6 +124,10 @@ function get_module_groups() {
     $ungrouped = [];
 
     foreach ($modules as $m) {
+        // Skip disabled modules so they do not appear in the sidebar.
+        if (array_key_exists('enabled', $m) && empty($m['enabled'])) {
+            continue;
+        }
         $group = trim((string)($m['group'] ?? ''));
         if ($group === '') {
             // Modules without a group are not added to any group; they are

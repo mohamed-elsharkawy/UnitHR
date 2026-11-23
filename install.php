@@ -340,8 +340,8 @@ try {
     msg("user_permissions table created.");
 
     step('Creating permissions...', function() use ($pdo, $P) {
-        $modules = ['home','appmodules','deptypes','depstructure','users','permissions','accesslog','notifications','employeesgroup','employeestypes','leavestypes','holidays','empdegrees','empstatus','retireplan','fiscalyears','employeesmain','leavesbalances','empleaves','reports','ess','attendance','attpermissions','disciplinary','emppromotions','documenttypes','emparchives'];
-        $modAr = ['home'=>'لوحة التحكم','appmodules'=>'وحدات التطبيق','deptypes'=>'أنواع الأقسام','depstructure'=>'هيكلة الأقسام','users'=>'المستخدمون','permissions'=>'الصلاحيات','accesslog'=>'سجل الدخول','notifications'=>'الإشعارات','employeesgroup'=>'مجموعات الموظفين','employeestypes'=>'أنواع الموظفين','leavestypes'=>'أنواع الإجازات','holidays'=>'العطلات الرسمية','empdegrees'=>'الدرجات الوظيفية','empstatus'=>'الحالة الوظيفية','retireplan'=>'خطة التقاعد','fiscalyears'=>'السنة المالية','employeesmain'=>'الموظفون الرئيسيون','leavesbalances'=>'أرصدة الإجازات','empleaves'=>'إجازات الموظفين','reports'=>'التقارير','ess'=>'خدمة الموظف الذاتية','attendance'=>'الحضور والانصراف','attpermissions'=>'إذونات الحضور','disciplinary'=>'جزاءات الموظفين','emppromotions'=>'ترقية موظف','documenttypes'=>'نوع المستند','emparchives'=>'أرشيف الموظفين'];
+        $modules = ['home','appmodules','deptypes','depstructure','users','permissions','accesslog','notifications','employeesgroup','employeestypes','leavestypes','holidays','empdegrees','empstatus','retireplan','fiscalyears','employeesmain','leavesbalances','empleaves','reports','ess','attendance','attpermissions','disciplinary','emppromotions','documenttypes','emparchives','payroll'];
+        $modAr = ['home'=>'لوحة التحكم','appmodules'=>'وحدات التطبيق','deptypes'=>'أنواع الأقسام','depstructure'=>'هيكلة الأقسام','users'=>'المستخدمون','permissions'=>'الصلاحيات','accesslog'=>'سجل الدخول','notifications'=>'الإشعارات','employeesgroup'=>'مجموعات الموظفين','employeestypes'=>'أنواع الموظفين','leavestypes'=>'أنواع الإجازات','holidays'=>'العطلات الرسمية','empdegrees'=>'الدرجات الوظيفية','empstatus'=>'الحالة الوظيفية','retireplan'=>'خطة التقاعد','fiscalyears'=>'السنة المالية','employeesmain'=>'الموظفون الرئيسيون','leavesbalances'=>'أرصدة الإجازات','empleaves'=>'إجازات الموظفين','reports'=>'التقارير','ess'=>'خدمة الموظف الذاتية','attendance'=>'الحضور والانصراف','attpermissions'=>'إذونات الحضور','disciplinary'=>'جزاءات الموظفين','emppromotions'=>'ترقية موظف','documenttypes'=>'نوع المستند','emparchives'=>'أرشيف الموظفين','payroll'=>'الإستحقاقات'];
         $adminId = null;
         $permId = null;
         $u = $pdo->query("SELECT id FROM `{$P}users` WHERE username = 'admin' AND omitted = 0 LIMIT 1")->fetch();
@@ -363,6 +363,12 @@ try {
     });
     msg("Permissions created and linked to SuperAdmin via user_permissions.");
 
+    step('Installing Payroll module...', function() use ($pdo, $P) {
+        require_once __DIR__ . '/modules/payroll/install.php';
+        if (function_exists('payroll_install')) {
+            payroll_install($pdo, $P);
+        }
+    });
     step('Finalizing...', function() {});
     progress_bar(100, 'Installation Complete!');
     msg("Default SuperAdmin: username <b>admin</b> / password <b>admin123</b>");

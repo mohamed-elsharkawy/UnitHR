@@ -93,7 +93,7 @@ run_table_module([
         ['name'=>'degreename','label'=>'Degree Name','label_ar'=>'اسم الدرجة','type'=>'hidden'],
         ['name'=>'degreenamear','label'=>'Degree Name (Arabic)','label_ar'=>'اسم الدرجة بالعربية','type'=>'hidden'],
         ['name'=>'degreeacquireddate','label'=>'Degree Acquired Date','label_ar'=>'تاريخ الحصول على الدرجة','type'=>'date','required'=>true],
-        ['name'=>'decisionnumber','label'=>'Decision Number','label_ar'=>'رقم قرار الترقي','type'=>'text'],
+        ['name'=>'decisionnumber','label'=>'Decision Number','label_ar'=>'رقم قرار الترقي','type'=>'text','extra'=>'maxlength="50"'],
         ['name'=>'decisiondate','label'=>'Decision Date','label_ar'=>'تاريخ القرار','type'=>'date'],
         ['name'=>'senioritydate','label'=>'Seniority Date','label_ar'=>'تاريخ الأقدمية','type'=>'date'],
         ['name'=>'decisionfile','label'=>'Decision of Promotion','label_ar'=>'قرار الترقي','type'=>'file','accept'=>'TIFF,PDF,JPG,JPEG,JPE,PNG','current_path_field'=>'decisionfilepath','required'=>false],

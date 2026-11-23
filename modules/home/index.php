@@ -5,6 +5,11 @@ if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
 require_login();
 $isAr = lang() === 'ar';
 
+$modEnabled = function ($folder) {
+    $info = get_module($folder);
+    return is_array($info) && (array_key_exists('enabled', $info) ? !empty($info['enabled']) : true);
+};
+
 $stats = [];
 $chartEmpType = ['labels' => [], 'values' => []];
 $chartEmpGroup = ['labels' => [], 'values' => []];
@@ -18,19 +23,43 @@ if (db_available()) {
 
     $stats['departments'] = $count('depstructure');
     $stats['employees']   = $count('employeesmain');
-    $stats['leaves']      = $count('empleaves');
     $stats['users']       = $count('users');
-    $stats['leavetypes']  = $count('leavestypes');
-    $stats['leaves_pending']  = $count('empleaves', "omitted=0 AND isapproved=0 AND (rejectedat IS NULL OR rejectedat='')");
-    $stats['leaves_approved'] = $count('empleaves', "omitted=0 AND isapproved=1");
-    $stats['leaves_rejected'] = $count('empleaves', "omitted=0 AND rejectedat IS NOT NULL AND rejectedat<>''");
-    $stats['att_records'] = $count('daily_attendance');
-    $stats['att_present'] = $count('daily_attendance', "omitted=0 AND status_code='PRESENT'");
-    $stats['att_absent']  = $count('daily_attendance', "omitted=0 AND status_code='ABSENT'");
-    $stats['att_perms']   = $count('att_permission_requests');
-    $stats['att_perms_pending'] = $count('att_permission_requests', "omitted=0 AND (status IS NULL OR status='' OR status='PENDING')");
-    $stats['att_perms_approved'] = $count('att_permission_requests', "omitted=0 AND status='APPROVED'");
-    $stats['att_perms_rejected'] = $count('att_permission_requests', "omitted=0 AND status='REJECTED'");
+    $stats['leavetypes']  = $modEnabled('leavestypes') ? $count('leavestypes') : 0;
+
+    if ($modEnabled('empleaves')) {
+        $stats['leaves']      = $count('empleaves');
+        $stats['leaves_pending']  = $count('empleaves', "omitted=0 AND isapproved=0 AND (rejectedat IS NULL OR rejectedat='')");
+        $stats['leaves_approved'] = $count('empleaves', "omitted=0 AND isapproved=1");
+        $stats['leaves_rejected'] = $count('empleaves', "omitted=0 AND rejectedat IS NOT NULL AND rejectedat<>''");
+    } else {
+        $stats['leaves'] = 0; $stats['leaves_pending'] = 0; $stats['leaves_approved'] = 0; $stats['leaves_rejected'] = 0;
+    }
+
+    if ($modEnabled('attendance')) {
+        $stats['att_records'] = $count('daily_attendance');
+        $stats['att_present'] = $count('daily_attendance', "omitted=0 AND status_code='PRESENT'");
+        $stats['att_absent']  = $count('daily_attendance', "omitted=0 AND status_code='ABSENT'");
+    } else {
+        $stats['att_records'] = 0; $stats['att_present'] = 0; $stats['att_absent'] = 0;
+    }
+
+    if ($modEnabled('attpermissions')) {
+        $stats['att_perms']   = $count('att_permission_requests');
+        $stats['att_perms_pending'] = $count('att_permission_requests', "omitted=0 AND (status IS NULL OR status='' OR status='PENDING')");
+        $stats['att_perms_approved'] = $count('att_permission_requests', "omitted=0 AND status='APPROVED'");
+        $stats['att_perms_rejected'] = $count('att_permission_requests', "omitted=0 AND status='REJECTED'");
+    } else {
+        $stats['att_perms'] = 0; $stats['att_perms_pending'] = 0; $stats['att_perms_approved'] = 0; $stats['att_perms_rejected'] = 0;
+    }
+
+    if ($modEnabled('payroll')) {
+        $stats['payroll_runs'] = $count('payroll_runs');
+        $stats['payroll_final_runs'] = $count('payroll_runs', "omitted=0 AND status='final'");
+        $row = fetchRow("SELECT COALESCE(SUM(net_total),0) n FROM " . table('payroll_runs') . " WHERE omitted=0 AND status='final' AND payroll_year=?", [(int)date('Y')]);
+        $stats['payroll_ytd_net'] = $row ? (float)$row['n'] : 0;
+    } else {
+        $stats['payroll_runs'] = 0; $stats['payroll_final_runs'] = 0; $stats['payroll_ytd_net'] = 0;
+    }
 
     // Employees by type
     $rows = fetchAll("SELECT emptypename, emptypenamear, COUNT(*) c FROM " . table('employeesmain') . " WHERE omitted=0 GROUP BY emptypename, emptypenamear ORDER BY c DESC");
@@ -56,18 +85,22 @@ if (db_available()) {
     $stats = ['departments'=>0,'employees'=>0,'leaves'=>0,'users'=>0,'leavetypes'=>0,
               'leaves_pending'=>0,'leaves_approved'=>0,'leaves_rejected'=>0,
               'att_records'=>0,'att_present'=>0,'att_absent'=>0,
-              'att_perms'=>0,'att_perms_pending'=>0,'att_perms_approved'=>0,'att_perms_rejected'=>0];
+              'att_perms'=>0,'att_perms_pending'=>0,'att_perms_approved'=>0,'att_perms_rejected'=>0,
+              'payroll_runs'=>0,'payroll_final_runs'=>0,'payroll_ytd_net'=>0];
 }
 
-$statCards = [
-    ['label' => $isAr ? 'الموظفون' : 'Employees', 'value' => $stats['employees'], 'color' => 'success', 'icon' => 'bi-people-fill'],
-    ['label' => $isAr ? 'الأقسام' : 'Departments', 'value' => $stats['departments'], 'color' => 'info', 'icon' => 'bi-building'],
-    ['label' => $isAr ? 'المستخدمون' : 'Users', 'value' => $stats['users'], 'color' => 'primary', 'icon' => 'bi-person-badge'],
-    ['label' => $isAr ? 'أنواع الإجازات' : 'Leave Types', 'value' => $stats['leavetypes'], 'color' => 'secondary', 'icon' => 'bi-calendar-event'],
-    ['label' => $isAr ? 'الإجازات' : 'Leaves', 'value' => $stats['leaves'], 'color' => 'warning', 'icon' => 'bi-calendar-check'],
-    ['label' => $isAr ? 'سجلات الحضور' : 'Attendance Records', 'value' => $stats['att_records'], 'color' => 'dark', 'icon' => 'bi-clock-history'],
-    ['label' => $isAr ? 'إذونات الحضور' : 'Attendance Permissions', 'value' => $stats['att_perms'], 'color' => 'danger', 'icon' => 'bi-shield-check'],
-];
+$statCards = [];
+$statCards[] = ['label' => $isAr ? 'الموظفون' : 'Employees', 'value' => $stats['employees'], 'color' => 'success', 'icon' => 'bi-people-fill'];
+$statCards[] = ['label' => $isAr ? 'الأقسام' : 'Departments', 'value' => $stats['departments'], 'color' => 'info', 'icon' => 'bi-building'];
+$statCards[] = ['label' => $isAr ? 'المستخدمون' : 'Users', 'value' => $stats['users'], 'color' => 'primary', 'icon' => 'bi-person-badge'];
+if ($modEnabled('leavestypes')) { $statCards[] = ['label' => $isAr ? 'أنواع الإجازات' : 'Leave Types', 'value' => $stats['leavetypes'], 'color' => 'secondary', 'icon' => 'bi-calendar-event']; }
+if ($modEnabled('empleaves')) { $statCards[] = ['label' => $isAr ? 'الإجازات' : 'Leaves', 'value' => $stats['leaves'], 'color' => 'warning', 'icon' => 'bi-calendar-check']; }
+if ($modEnabled('attendance')) { $statCards[] = ['label' => $isAr ? 'سجلات الحضور' : 'Attendance Records', 'value' => $stats['att_records'], 'color' => 'dark', 'icon' => 'bi-clock-history']; }
+if ($modEnabled('attpermissions')) { $statCards[] = ['label' => $isAr ? 'أذونات الحضور' : 'Attendance Permissions', 'value' => $stats['att_perms'], 'color' => 'danger', 'icon' => 'bi-shield-check']; }
+if ($modEnabled('payroll')) {
+    $statCards[] = ['label' => $isAr ? 'مسيرات الرواتب' : 'Payroll Runs', 'value' => $stats['payroll_runs'], 'color' => 'success', 'icon' => 'bi-cash-stack'];
+    $statCards[] = ['label' => $isAr ? 'صافي الإستحقاقات (السنة)' : 'Payroll Net (Year)', 'value' => number_format($stats['payroll_ytd_net'], 2), 'color' => 'info', 'icon' => 'bi-wallet2'];
+}
 ?>
 <script src="assets/js/chart.umd.min.js"></script>
 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -93,6 +126,7 @@ $statCards = [
 
 <!-- Breakdown cards -->
 <div class="row g-3 mb-4">
+<?php if ($modEnabled('empleaves')): ?>
     <div class="col-md-4">
         <div class="card h-100">
             <div class="card-header"><?= $isAr ? 'الإجازات' : 'Leaves' ?></div>
@@ -103,6 +137,8 @@ $statCards = [
             </div>
         </div>
     </div>
+<?php endif; ?>
+<?php if ($modEnabled('attendance')): ?>
     <div class="col-md-4">
         <div class="card h-100">
             <div class="card-header"><?= $isAr ? 'الحضور' : 'Attendance' ?></div>
@@ -113,9 +149,11 @@ $statCards = [
             </div>
         </div>
     </div>
+<?php endif; ?>
+<?php if ($modEnabled('attpermissions')): ?>
     <div class="col-md-4">
         <div class="card h-100">
-            <div class="card-header"><?= $isAr ? 'إذونات الحضور' : 'Attendance Permissions' ?></div>
+            <div class="card-header"><?= $isAr ? 'أذونات الحضور' : 'Attendance Permissions' ?></div>
             <div class="card-body">
                 <div class="d-flex justify-content-between mb-2"><span><?= $isAr ? 'قيد الانتظار' : 'Pending' ?></span><span class="badge bg-warning text-dark"><?= (int)$stats['att_perms_pending'] ?></span></div>
                 <div class="d-flex justify-content-between mb-2"><span><?= $isAr ? 'موافق' : 'Approved' ?></span><span class="badge bg-success"><?= (int)$stats['att_perms_approved'] ?></span></div>
@@ -123,6 +161,19 @@ $statCards = [
             </div>
         </div>
     </div>
+<?php endif; ?>
+<?php if ($modEnabled('payroll')): ?>
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header"><?= $isAr ? 'الإستحقاقات' : 'Payroll' ?></div>
+            <div class="card-body">
+                <div class="d-flex justify-content-between mb-2"><span><?= $isAr ? 'مسيرات' : 'Runs' ?></span><span class="badge bg-success"><?= (int)$stats['payroll_runs'] ?></span></div>
+                <div class="d-flex justify-content-between mb-2"><span><?= $isAr ? 'معتمدة' : 'Finalized' ?></span><span class="badge bg-primary"><?= (int)$stats['payroll_final_runs'] ?></span></div>
+                <div class="d-flex justify-content-between"><span><?= $isAr ? 'صافي (السنة)' : 'Net (Year)' ?></span><span class="badge bg-info"><?= number_format($stats['payroll_ytd_net'], 2) ?></span></div>
+            </div>
+        </div>
+    </div>
+<?php endif; ?>
 </div>
 
 <!-- Charts -->

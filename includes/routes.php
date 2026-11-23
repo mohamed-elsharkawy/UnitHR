@@ -10,6 +10,10 @@ function get_routes() {
     $routes = [];
     $modules = get_modules();
     foreach ($modules as $module) {
+        // Skip disabled modules in the menu/routing surface.
+        if (array_key_exists('enabled', $module) && empty($module['enabled'])) {
+            continue;
+        }
         $routes[] = [
             'name'        => $module['name'],
             'name_ar'     => $module['name_ar'] ?? $module['name'],

@@ -5,9 +5,9 @@
 $moduleInfo = [
     'name'        => 'Application Modules',
     'name_ar'    => 'وحدات التطبيق',
-    'description' => 'Manage application modules, menu appearance and permissions.',
-    'description_ar' => 'إدارة وحدات التطبيق ومظهر القائمة والصلاحيات',
-    'version'     => '2.3.0',
+    'description' => 'Enable or disable application modules (SuperAdmin only).',
+    'description_ar' => 'تفعيل أو تعطيل وحدات التطبيق (المدير العام فقط)',
+    'version'     => '2.4.0',
     'author'      => 'UnitHR Team',
     'icon'        => 'bi bi-layout-sidebar',
     'group'       => 'Administration',

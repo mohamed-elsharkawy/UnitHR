@@ -17,7 +17,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_empid'])) {
     $empid = (int)$_POST['promote_empid'];
     $newDegreeId = (int)$_POST['new_degree_id'];
     $promotionDate = trim($_POST['promotion_date'] ?? date('Y-m-d'));
-    
+    $decisionNumber = trim($_POST['decisionnumber'] ?? '');
+    $decisionDate = trim($_POST['decisiondate'] ?? '');
+
+    if (function_exists('mb_strlen') && mb_strlen($decisionNumber) > 50) {
+        set_flash('error', $isAr ? 'رقم القرار يجب ألا يتجاوز 50 حرفاً.' : 'Decision number cannot exceed 50 characters.');
+        header('Location: ?module=empseniority'); exit;
+    }
+    if ($decisionDate !== '') {
+        $dd = DateTime::createFromFormat('Y-m-d', $decisionDate);
+        if (!$dd || $dd->format('Y-m-d') !== $decisionDate) {
+            set_flash('error', $isAr ? 'تاريخ القرار غير صحيح.' : 'Invalid decision date.');
+            header('Location: ?module=empseniority'); exit;
+        }
+    } else {
+        $decisionDate = null;
+    }
+
     $emp = fetchRow("SELECT * FROM " . table('employeesmain') . " WHERE id=? AND omitted=0 LIMIT 1", [$empid]);
     $currentDegree = fetchRow("SELECT * FROM " . table('empdegrees') . " WHERE id=? AND omitted=0 LIMIT 1", [$emp['currentdegreeid']]);
     $newDegree = fetchRow("SELECT * FROM " . table('empdegrees') . " WHERE id=? AND omitted=0 LIMIT 1", [$newDegreeId]);
@@ -33,10 +49,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_empid'])) {
             $promotionDate
         );
         
-        // Update employee
         $now = date('Y-m-d H:i:s');
         $an = $u['username_ar'] ?? $u['username'];
-        q("UPDATE " . table('employeesmain') . " SET 
+        $pdo = db();
+        $inTx = false;
+        try {
+            $inTx = $pdo ? (bool)$pdo->beginTransaction() : false;
+        } catch (Throwable $e) {
+            $inTx = false;
+        }
+
+        // Update employee
+        $ok = (bool)q("UPDATE " . table('employeesmain') . " SET 
             currentdegreeid = ?, 
             currentdegreename = ?, 
             currentdegreenamear = ?,
@@ -50,15 +74,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['promote_empid'])) {
             WHERE id = ?",
             [$newDegreeId, $newDegree['degreename'], $newDegree['degreenamear'],
              $promotionDate, $newSeniorityDate, $now, $u['id'], $u['username'], $an, $an, $empid]);
-        
+
         // Cascade update to balances and leaves
-        q("UPDATE " . table('leavesbalances') . " SET empfullname=?, empfullnamear=? WHERE empid=? AND omitted=0",
-            [$emp['empfullname'], $emp['empfullnamear'], $empid]);
-        q("UPDATE " . table('empleaves') . " SET empfullname=?, empfullnamear=? WHERE empid=? AND omitted=0",
-            [$emp['empfullname'], $emp['empfullnamear'], $empid]);
-        
-        set_flash('success', $isAr ? 'تمت ترقية الموظف بنجاح.' : 'Employee promoted successfully.');
-        header('Location: ?module=empseniority'); exit;
+        if ($ok) {
+            $ok = (bool)q("UPDATE " . table('leavesbalances') . " SET empfullname=?, empfullnamear=? WHERE empid=? AND omitted=0",
+                [$emp['empfullname'], $emp['empfullnamear'], $empid]);
+        }
+        if ($ok) {
+            $ok = (bool)q("UPDATE " . table('empleaves') . " SET empfullname=?, empfullnamear=? WHERE empid=? AND omitted=0",
+                [$emp['empfullname'], $emp['empfullnamear'], $empid]);
+        }
+
+        // Save the promotion record exactly like the manual promotions screen.
+        if ($ok) {
+            $ok = (bool)q("INSERT INTO " . table('emppromotions') . " (
+                rguid, empid, empfullname, empfullnamear, promotiondate, degreeid,
+                degreename, degreenamear, degreeacquireddate, decisionnumber, decisiondate,
+                senioritydate, dtadded, addedbyid, addedby, addedbyname, addedbynamear,
+                lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)",
+                [bin2hex(random_bytes(16)), $empid, $emp['empfullname'], $emp['empfullnamear'],
+                 $promotionDate, $newDegreeId, $newDegree['degreename'], $newDegree['degreenamear'],
+                 $promotionDate, ($decisionNumber !== '' ? $decisionNumber : null), $decisionDate,
+                 $newSeniorityDate, $now, $u['id'], $u['username'], $an, $an,
+                 $now, $u['id'], $u['username'], $an, $an]);
+        }
+
+        if ($ok) {
+            if ($inTx) { $pdo->commit(); }
+            set_flash('success', $isAr ? 'تمت ترقية الموظف بنجاح.' : 'Employee promoted successfully.');
+            header('Location: ?module=empseniority'); exit;
+        }
+
+        if ($inTx) { $pdo->rollBack(); }
+        set_flash('error', db_error() ?: ($isAr ? 'تعذر حفظ الترقية.' : 'Could not save the promotion.'));
     } else {
         set_flash('error', $isAr ? 'بيانات غير صحيحة.' : 'Invalid data.');
     }
@@ -165,6 +214,14 @@ $degrees = fetchAll("SELECT id, degreename, degreenamear, interimperiod, nextdeg
                                 <div class="mb-3">
                                     <label class="form-label"><?= $isAr ? 'تاريخ الترقية' : 'Promotion Date' ?></label>
                                     <input type="date" name="promotion_date" class="form-control" value="<?= date('Y-m-d') ?>" required>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label"><?= $isAr ? 'رقم القرار' : 'Decision Number' ?></label>
+                                    <input type="text" name="decisionnumber" class="form-control" maxlength="50">
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label"><?= $isAr ? 'تاريخ القرار' : 'Decision Date' ?></label>
+                                    <input type="date" name="decisiondate" class="form-control">
                                 </div>
                                 <div class="alert alert-info small">
                                     <?= $isAr ? 'تاريخ الأقدمية في الدرجة الجديدة سيتم حسابه تلقائياً بناءً على الوقت الإضافي.' : 'Seniority date in the new degree will be calculated automatically based on excess time.' ?>

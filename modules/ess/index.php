@@ -167,12 +167,15 @@ if ($emp) {
     $empid = (int)$emp['id'];
     $leavetypes = fetchAll("SELECT * FROM " . table('leavestypes') . " WHERE omitted=0 ORDER BY leavetypename ASC");
     $fyears = fetchAll("SELECT id, fstartdate, fenddate FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC");
-    $currentFy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 AND ? BETWEEN fstartdate AND fenddate LIMIT 1", [date('Y-m-d')]);
+    // Balances for the year the employee is logged in on (current calendar year).
+    $currentYear = (int)date('Y');
+    $currentFy = fetchRow("SELECT id, fstartdate, fenddate FROM " . table('fiscalyears') . " WHERE omitted=0 AND YEAR(fstartdate) = ? ORDER BY fstartdate DESC LIMIT 1", [$currentYear]);
     if (!$currentFy) {
-        $currentFy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC LIMIT 1");
+        // fallback: fiscal year that contains today
+        $currentFy = fetchRow("SELECT id, fstartdate, fenddate FROM " . table('fiscalyears') . " WHERE omitted=0 AND ? BETWEEN fstartdate AND fenddate LIMIT 1", [date('Y-m-d')]);
     }
     if (!$currentFy) {
-        $currentFy = fetchRow("SELECT id FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC LIMIT 1");
+        $currentFy = fetchRow("SELECT id, fstartdate, fenddate FROM " . table('fiscalyears') . " WHERE omitted=0 ORDER BY fstartdate DESC LIMIT 1");
     }
     $currentFyId = $currentFy ? (int)$currentFy['id'] : 0;
     $balances = $currentFyId
@@ -305,6 +308,44 @@ if ($emp) {
                 </form>
             </div>
         </div>
+    </div>
+</div>
+<div class="card mt-3" id="leave_balances">
+    <div class="card-header">
+        <?= $isAr ? 'أرصدة الإجازات' : 'Leave Balances' ?>
+        <span class="badge bg-secondary ms-2">
+            <?= $currentFyId && !empty($currentFy['fstartdate']) ? htmlspecialchars(substr($currentFy['fstartdate'], 0, 4)) : htmlspecialchars((string)date('Y')) ?>
+        </span>
+    </div>
+    <div class="card-body">
+        <?php if (!empty($balances)): ?>
+        <div class="table-responsive">
+        <table class="table table-sm">
+            <thead><tr>
+                <th><?= $isAr ? 'نوع الإجازة' : 'Leave Type' ?></th>
+                <th><?= $isAr ? 'السنة المالية' : 'Fiscal Year' ?></th>
+                <th><?= $isAr ? 'المحول' : 'Carryover' ?></th>
+                <th><?= $isAr ? 'الابتدائي' : 'Initial' ?></th>
+                <th><?= $isAr ? 'المستخدم' : 'Used' ?></th>
+                <th><?= $isAr ? 'المتبقي' : 'Remaining' ?></th>
+            </tr></thead>
+            <tbody>
+            <?php foreach ($balances as $b): ?>
+            <tr>
+                <td><?= htmlspecialchars($isAr ? ($b['leavetypenamear'] ?? '') : ($b['leavetypename'] ?? '')) ?></td>
+                <td><?= htmlspecialchars(($b['fstartdate'] ?? '') . ' - ' . ($b['fenddate'] ?? '')) ?></td>
+                <td><?= (int)($b['carryoverbalance'] ?? 0) ?></td>
+                <td><?= (int)($b['initialbalance'] ?? 0) ?></td>
+                <td><?= (int)($b['usedbalance'] ?? 0) ?></td>
+                <td><?= (int)($b['remainingbalance'] ?? 0) ?></td>
+            </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+        </div>
+        <?php else: ?>
+        <div class="alert alert-info mb-0"><?= $isAr ? 'لا توجد أرصدة لهذه السنة.' : 'No balances for this year.' ?></div>
+        <?php endif; ?>
     </div>
 </div>
 <?php if ($hasSubordinates && !empty($pendingLeaves)): ?>

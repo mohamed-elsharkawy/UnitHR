@@ -7,6 +7,7 @@ if (!defined('UNITHR_ENTRY')) { header('Location: ../../'); exit; }
 require_login();
 require_permission('reports', 'view');
 require_once __DIR__ . '/../../includes/helpers.php';
+require_once __DIR__ . '/../../includes/modules.php';
 $isAr = lang() === 'ar';
 
 $reports = [
@@ -57,6 +58,38 @@ $reports = [
                     FROM " . table('emppromotions') . " p WHERE p.omitted=0 ORDER BY p.id DESC",
     ],
 ];
+
+// Payroll reports (only when the payroll module is enabled)
+if (function_exists('get_module')) {
+    $payrollInfo = get_module('payroll');
+    if (is_array($payrollInfo) && (array_key_exists('enabled', $payrollInfo) ? !empty($payrollInfo['enabled']) : true)) {
+        $reports['payroll_runs'] = [
+            'title' => $isAr ? 'مسيرات الرواتب' : 'Payroll Runs',
+            'sql'   => "SELECT r.payroll_year AS 'Year', r.payroll_month AS 'Month', r.status AS 'Status',
+                               r.employee_count AS 'Employees', r.gross_total AS 'Gross', r.taxable_total AS 'Taxable',
+                               r.tax_total AS 'Tax', r.insurance_total AS 'Insurance', r.employer_insurance_total AS 'Employer Insurance',
+                               r.deductions_total AS 'Deductions', r.net_total AS 'Net'
+                        FROM " . table('payroll_runs') . " r WHERE r.omitted=0 ORDER BY r.payroll_year DESC, r.payroll_month DESC",
+        ];
+        $reports['payroll_items'] = [
+            'title' => $isAr ? 'بنود مسيرات الرواتب' : 'Payroll Run Items',
+            'sql'   => "SELECT i.empfullname AS 'Employee', i.empfullnamear AS 'Employee (Arabic)',
+                               i.basic_salary AS 'Basic', i.gross_pay AS 'Gross', i.taxable_base AS 'Taxable Base',
+                               i.tax_amount AS 'Tax', i.insurance_base AS 'Insurance Base', i.insurance_amount AS 'Insurance',
+                               i.employer_insurance AS 'Employer Insurance', i.deductions_total AS 'Deductions', i.net_salary AS 'Net'
+                        FROM " . table('payroll_run_items') . " i
+                        INNER JOIN " . table('payroll_runs') . " r ON r.id=i.run_id
+                        WHERE i.omitted=0 AND r.omitted=0 ORDER BY r.payroll_year DESC, r.payroll_month DESC, i.empfullname",
+        ];
+        $reports['payroll_types'] = [
+            'title' => $isAr ? 'أنواع الإستحقاقات والخصومات' : 'Payroll Types',
+            'sql'   => "SELECT code AS 'Code', name AS 'Name', name_ar AS 'Name (Arabic)', kind AS 'Kind',
+                               calc_method AS 'Method', rate AS 'Rate', amount AS 'Amount', before_tax AS 'Before Tax',
+                               before_insurance AS 'Before Insurance', enabled AS 'Enabled'
+                        FROM " . table('payroll_types') . " WHERE omitted=0 ORDER BY kind, sort_order",
+        ];
+    }
+}
 
 $report = $_GET['report'] ?? '';
 $fmt = $_GET['fmt'] ?? '';

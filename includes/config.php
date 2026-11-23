@@ -49,7 +49,7 @@ if (empty($_SESSION[UHR_SESSION_KEY]['dbname'])) {
 $_SESSION[UHR_SESSION_KEY]['appname']        = 'UnitHR';
 $_SESSION[UHR_SESSION_KEY]['apppath']        = rtrim(dirname($_SERVER['SCRIPT_NAME']), '/\\') . '/';
 $_SESSION[UHR_SESSION_KEY]['applogo']        = 'assets/img/UnitHR.png';
-$_SESSION[UHR_SESSION_KEY]['appversion']     = '2.3.0';
+$_SESSION[UHR_SESSION_KEY]['appversion']     = '2.6.0';
 $_SESSION[UHR_SESSION_KEY]['appauthor']      = 'Mohamed El-Sharkawy';
 $_SESSION[UHR_SESSION_KEY]['appemail']       = 'pro.msharkawy@gmail.com';
 

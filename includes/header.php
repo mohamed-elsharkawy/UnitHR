@@ -76,6 +76,22 @@ if (!function_exists('mod_display_name')) {
         /* Page container flex layout for sticky footer */
         .page-container { display: flex; flex-direction: column; min-height: 100vh; }
         .content-wrapper { flex: 1; }
+        /* Floating scroll-to-top button (rendered by the root front controller) */
+        .uhr-scroll-top {
+            position: fixed;
+            right: 1.25rem;
+            bottom: 4.5rem;
+            z-index: 1080;
+            display: none;
+            width: 2.75rem;
+            height: 2.75rem;
+            padding: 0;
+            border-radius: 50%;
+            align-items: center;
+            justify-content: center;
+        }
+        .uhr-scroll-top.show { display: inline-flex; }
+        [dir="rtl"] .uhr-scroll-top { right: auto; left: 1.25rem; }
         /* Footer styling */
         footer.bg-dark { background: #212529 !important; border-top: 1px solid #495057; }
         footer .container, footer .container-fluid { max-width: 100%; }
