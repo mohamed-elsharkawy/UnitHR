@@ -20,7 +20,7 @@ $action = $_GET['a'] ?? 'list';
 
 // Core modules keep the application reachable. Disabling one of these could
 // lock every user (including the SuperAdmin) out of the UI.
-$protectedModules = ['home', 'appmodules', 'ess', 'notifications', 'attpermissions'];
+$protectedModules = ['home', 'appmodules', 'ess', 'notifications', 'attpermissions', 'userprofile'];
 
 if (!function_exists('appmodules_redirect')) {
     function appmodules_redirect(): void

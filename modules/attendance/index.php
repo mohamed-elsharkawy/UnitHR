@@ -99,7 +99,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'punch_add') {
     // dedup
     $dup = null;
     if ($src !== '') {
-        $dup = fetchRow("SELECT id FROM " . table('biometric_punches') . " WHERE source_record_id=? LIMIT 1", [$src]);
+        $dup = fetchRow("SELECT id FROM " . table('biometric_punches') . " WHERE source_record_id=? AND punch_datetime=? LIMIT 1", [$src, $dt]);
     }
     if (!$dup) {
         $dup = fetchRow("SELECT id FROM " . table('biometric_punches') . " WHERE employee_id=? AND device_id=? AND punch_datetime=? LIMIT 1", [$empid,$device,$dt]);
@@ -138,7 +138,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $action === 'punch_import') {
                 $info = trim($row[4] ?? 'CSV Import');
                 if ($empid <= 0 || $dt === '') { $skipped++; continue; }
                 $dup = null;
-                if ($src !== '') $dup = fetchRow("SELECT id FROM " . table('biometric_punches') . " WHERE source_record_id=? LIMIT 1", [$src]);
+                if ($src !== '') $dup = fetchRow("SELECT id FROM " . table('biometric_punches') . " WHERE source_record_id=? AND punch_datetime=? LIMIT 1", [$src, $dt]);
                 if (!$dup) $dup = fetchRow("SELECT id FROM " . table('biometric_punches') . " WHERE employee_id=? AND device_id=? AND punch_datetime=? LIMIT 1", [$empid,$device,$dt]);
                 if ($dup) { $skipped++; continue; }
                 $rguid = bin2hex(random_bytes(16));

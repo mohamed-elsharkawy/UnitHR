@@ -5,6 +5,27 @@
 ![Bootstrap](https://img.shields.io/badge/Bootstrap-5-purple)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
+**Version:** 2.7.0
+
+## Payroll Module (الإستحقاقات)
+
+The Payroll module provides configurable payabilities and deductions, Egyptian income tax and social insurance, CSV imports, payroll runs, payslips and year-end reconciliation.
+
+### Step-by-step usage
+1. **Enable the module**: As SuperAdmin, go to *Application Modules* and ensure *Payroll* is enabled (run the cron sync or use the module switch).
+2. **Configure payability/deduction types**: Open *Payroll → Payability & Deduction Types*. Add or edit types. Choose a calculation method (fixed, manual, % of basic, % of total payabilities, % of another type, by degree, by seniority). Set before/after tax and before/after insurance flags, min/max amounts.
+3. **Configure tax brackets**: Open *Payroll → Income Tax*. Add/edit tax years and their progressive bands (Egyptian Law 91/2005 as amended by Law 7/2024). Set the personal exemption (EGP 20,000) and round-down step (EGP 10).
+4. **Configure social insurance**: Open *Payroll → Social Insurance*. Add/edit insurance years with employee (11%) and employer (18.75%) rates and the insurable wage limits.
+5. **Employee setup**: Open *Payroll → Employee Payroll Setup*. For each employee enter the basic salary, mark tax/insurance exemptions if applicable, and select the payability/deduction types that apply (with optional amount/rate overrides and effective dates).
+6. **Import CSVs (optional)**: Open *Payroll → CSV Import*. Import basic salaries (CSV with employee id + basic salary) and deduction/payability values (long or wide format). Use *Validate only* first to check the file.
+7. **Create a payroll run**: Open *Payroll → Payroll Runs*, choose year and month, click *Create Payroll Run*. The engine calculates each employee's gross, tax, insurance and net salary.
+8. **Review and finalize**: Open the run, review employee items and lines, recalculate if needed, then *Finalize* to lock it (included in year-end).
+9. **Payslips**: From a run, open an employee's payslip and print or export (XLS/PDF/Word/CSV).
+10. **Year-end reconciliation**: Open *Payroll → Year-End Reconciliation*, select a year. The system recalculates annual tax due vs. withheld and shows each employee's creditor/debtor offset and annual insurance base. Export as needed.
+11. **Settings**: Open *Payroll → Settings* to enable/disable automatic tax and insurance and set the currency.
+
+All payroll screens and exports work in Arabic (RTL) and English (LTR).
+
 ## Overview
 
 **UnitHR** is a comprehensive Human Resources Management System built on the OpenFrame PHP Framework pattern. It provides complete HR management capabilities including employee records, leave management, department structure, user management, and reporting — all in a bilingual (Arabic/English) interface with RTL support.
@@ -16,7 +37,8 @@
 - **Department Structure** — Multi-level department hierarchy with types and managers
 - **Leave Management** — Leave types, balances per fiscal year, leave requests with approval workflow
 - **User Management** — Role-based permissions, OTP two-factor authentication
-- **Employee Self-Service (ESS)** — Employees access their own data via login credentials
+- **Employee Self-Service (ESS)** — Employees access their own data and current-year leave balances via login credentials
+- **Application Modules** — SuperAdmin-only module switch; updates `info.php` and syncs the database
 - **Reports** — Export to CSV, XLSX, Word (DOCX), and PDF
 
 ### Key Features
@@ -25,6 +47,7 @@
 - ✅ Employee login credentials auto-created on employee addition
 - ✅ National ID auto-deduction (birth date, retirement date, and gender — last 3 digits: even = Male, odd = Female)
 - ✅ Leave balance tracking per leave type per fiscal year
+- ✅ ESS shows the leave balances for the year the employee is logged in on (2026, 2027, …)
 - ✅ Leave approval/rejection workflow by superiors
 - ✅ Soft-delete with audit shadow logging
 - ✅ Offline exports (CSV, XLSX, Word, PDF) — no internet required
@@ -43,6 +66,8 @@
 - ✅ Installer choice: create new database or use existing one
 - ✅ REST/JSON API (`/api/`) with Basic/Bearer/API-key auth, LDAP-like bind & search
 - ✅ Cron-based module auto-sync (cron.php) for appmodules table
+- ✅ SuperAdmin module switch (Application Modules): enable/disable any non-core module; rewrites its `info.php` and runs the module sync automatically
+- ✅ Back-to-top button on every admin page
 - ✅ Sticky sidebar (full height), sticky navbar with shrink-on-scroll, sticky footer with GitHub link
 
 ## Requirements
@@ -93,6 +118,10 @@ Run `cron.php` to sync all module info.php data to the `appmodules` database tab
 php cron.php
 ```
 
+The **Application Modules** screen also runs the same sync automatically after a
+module is enabled or disabled, so the database stays current without waiting
+for the scheduled job.
+
 ### 5. Default Login
 - **Username:** `admin`
 - **Password:** `admin123`
@@ -108,7 +137,7 @@ UnitHR/
 ├── index.php              # Front controller
 ├── install.php            # Database installer & seeder
 ├── cron.php               # Module sync cron script
-├── schema.sql             # MySQL schema (44 tables + audit log)
+├── schema.sql             # MySQL schema (44 tables, including audit log)
 ├── redirect.html          # DevTools redirect page
 ├── assets/                # Bootstrap CSS/JS, icons, logo
 ├── includes/              # Core framework files
@@ -121,12 +150,13 @@ UnitHR/
 │   ├── footer.php         # Shared layout footer
 │   ├── login.php          # Login form (two tabs)
 │   ├── modules.php        # Module scanner
+│   ├── module_sync.php    # Shared info.php → appmodules synchronizer
 │   ├── qrcode.php         # Pure-PHP QR code generator
 │   └── crud_engine.php    # Generic CRUD engine
 ├── lang/                  # Translations
 │   ├── en.php             # English labels
 │   └── ar.php             # Arabic labels
-└── modules/               # 28 application modules
+└── modules/               # 29 application modules
     ├── home/              # Dashboard
     ├── employeesmain/     # Employee records (NID deduction)
     ├── leavesbalances/    # Leave balances per type & fiscal year
@@ -155,6 +185,7 @@ UnitHR/
 | **Leave Types/Balances/Requests** | Leave management with approval workflow |
 | **Notifications** | Per-user inbox, leave alerts, global/group announcements |
 | **Users & Permissions** | User accounts and module permissions |
+| **Application Modules** | SuperAdmin-only list of modules with enable/disable switches |
 | **Access Log** | Login/logout audit trail |
 | **Reports** | Export data to CSV/XLSX/Word/PDF |
 | **ESS** | Employee Self-Service portal |
@@ -183,6 +214,20 @@ $moduleInfo = [
 
 The preferred group order is **Dashboard, Organization, Employees, Leaves, Administration, Fiscal, Reports, Self-Service – ESS**. Any unknown group is displayed afterwards in alphabetical order. Adding a module to an existing group only requires setting `group` and `order` in its `info.php` — no change to `header.php` is needed.
 
+### Enabling & Disabling Modules
+
+SuperAdmins can open **Application Modules** and switch any non-core module on
+or off. A toggle:
+
+1. rewrites the module's `info.php` `'enabled'` flag,
+2. runs the shared module synchronizer (the same routine used by `cron.php`) to
+   update `uhr_appmodules`.
+
+Disabled modules disappear from the sidebar and their direct URLs redirect to
+the dashboard. The core modules (`home`, `appmodules`, `ess`, `notifications`,
+`attpermissions`) cannot be disabled, so the application always remains
+reachable.
+
 ## Default Credentials
 
 | Role | Username | Password |
@@ -194,7 +239,7 @@ The preferred group order is **Dashboard, Organization, Employees, Leaves, Admin
 
 | Role | Access |
 |------|--------|
-| SuperAdmin | Full access to all modules + dashboard + DevTools toggle |
+| SuperAdmin | Full access to all modules + dashboard + DevTools toggle + module enable/disable |
 | Admin | Full access to all modules + dashboard + DevTools toggle |
 | Employee | ESS only (own data, leave requests, own notification inbox, change password) |
 
@@ -227,10 +272,14 @@ A lightweight JSON API lives in `api/`. It returns JSON and can be used like
 an LDAP directory service: bind (authenticate) then search/query.
 
 - Base URL: `http://localhost/UnitHR/api/?action=<action>`
-- Auth: HTTP Basic, Bearer token (from `action=login`), or `X-API-Key` header.
+- Auth: persistent per-user API token in `X-API-Token` (recommended), a
+  short-lived Bearer token from `action=login`, HTTP Basic, or `X-API-Key`.
+- Every account carries an `api_token` (initially its `rguid`); rotating it
+  from **My Profile** or `action=regenerate_token` revokes the old token.
 - Endpoints: `employees`, `employee`, `departments`, `degrees`, `groups`,
   `statuses`, `leaves`, `attendance`, `archives`, `promotions`,
-  `documenttypes`, `notifications`, etc.
+  `documenttypes`, `notifications`, `profile`, `change_password`,
+  `regenerate_token`, etc.
 - See `api/README.md` for full documentation and examples.
 
 ## Security Features
@@ -242,13 +291,27 @@ an LDAP directory service: bind (authenticate) then search/query.
 - Soft-delete with audit trail
 - DevTools protection (disable right-click inspect)
 - CSRF protection via session tokens
+- Per-user persistent API tokens (`uhr_users.api_token`), initially the account rguid
 - Duplicate record prevention (NID, Insurance ID, Biometric ID)
 
-## ESS (Employee Self-Service)
+## My Profile (Self-Service Account)
+
+Every signed-in user can open **My Profile** from the top navbar and from the
+link at the end of the side menu. It provides:
+
+- View account information (username, department, role, last login, OTP state,
+  and the linked `employeesmain` record when the account is also an employee).
+- Update the account email address. When the account is linked to an employee,
+  the employee master record's email is updated as well.
+- Change the account password (current password required, minimum 8 characters).
+- View, reveal, copy, and rotate the persistent API token used by the REST API.
+
+Admins can perform the same email change from **Users**; the linked employee
+record is kept in step there too.
 
 Employees can:
 - View personal details and department info
-- View leave balances per leave type and fiscal year
+- View leave balances for the current year (the year they are logged in on), so 2026 shows 2026 balances and 2027 shows 2027 balances
 - View leave history
 - Submit leave requests (pending approval)
 - See projected balance immediately after submitting a request

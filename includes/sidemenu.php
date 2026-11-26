@@ -9,11 +9,14 @@
                     foreach ($group['modules'] as $m) {
                         $f = $m['folder'];
                         if (!isset($routesByFolder[$f])) { continue; }
+                        // "My Profile" is rendered as the last link below the
+                        // groups, not inside the Account group.
+                        if ($f === 'userprofile') { continue; }
                         // Permission filter: signed-in users only see modules they
                         // can view. Self-service modules (dashboard, ESS, personal
-                        // notifications inbox, own attendance permissions) stay
-                        // visible for everyone.
-                        $alwaysVisible = in_array($f, ['home', 'ess', 'notifications', 'attpermissions'], true);
+                        // notifications inbox, own attendance permissions, own
+                        // profile) stay visible for everyone.
+                        $alwaysVisible = in_array($f, ['home', 'ess', 'notifications', 'attpermissions', 'userprofile'], true);
                         if (!$alwaysVisible && !user_can($f, 'view')) { continue; }
                         $groupRoutes[] = $routesByFolder[$f];
                     }
@@ -56,4 +59,16 @@
                     <?php endif; ?>
                 <?php endforeach; ?>
             </nav>
+        <?php $profileRoute = $routesByFolder['userprofile'] ?? null; ?>
+        <?php if ($profileRoute): ?>
+        <div class="border-top border-secondary mt-2 pt-2 pb-3">
+            <ul class="nav flex-column">
+                <li class="nav-item">
+                    <a class="nav-link<?= current_module() === 'userprofile' ? ' active' : '' ?>" href="<?= htmlspecialchars($profileRoute['url']) ?>">
+                        <?php if (!empty($profileRoute['icon'])): ?><i class="<?= htmlspecialchars($profileRoute['icon']) ?> me-1">&nbsp;</i><?php endif; ?><?= htmlspecialchars(mod_display_name('userprofile', $profileRoute)) ?>
+                    </a>
+                </li>
+            </ul>
+        </div>
+        <?php endif; ?>
     </aside>

@@ -310,7 +310,8 @@ try {
 
     step('Creating SuperAdmin user...', function() use ($pdo, $P) {
         $encPass = password_hash('admin123', PASSWORD_DEFAULT);
-        $pdo->prepare("INSERT IGNORE INTO `{$P}users` (rguid, username, email, password, departmentid, departmentname, departmentnamear, permissionid, lastlogin, otp_secret, otp_enabled, is_admin, is_superadmin, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,?,NULL,'System','نظام',NULL,NULL,NULL,0,1,1,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([bin2hex(random_bytes(16)), 'admin', 'admin@unithr.local', $encPass]);
+        $rguid = bin2hex(random_bytes(16));
+        $pdo->prepare("INSERT IGNORE INTO `{$P}users` (rguid, api_token, username, email, password, departmentid, departmentname, departmentnamear, permissionid, lastlogin, otp_secret, otp_enabled, is_admin, is_superadmin, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,?,?,NULL,'System','نظام',NULL,NULL,NULL,0,1,1,1,'System','System','نظام',NOW(),1,'System','System','نظام',0)")->execute([$rguid, $rguid, 'admin', 'admin@unithr.local', $encPass]);
     });
     msg("SuperAdmin user created.");
 
@@ -340,8 +341,8 @@ try {
     msg("user_permissions table created.");
 
     step('Creating permissions...', function() use ($pdo, $P) {
-        $modules = ['home','appmodules','deptypes','depstructure','users','permissions','accesslog','notifications','employeesgroup','employeestypes','leavestypes','holidays','empdegrees','empstatus','retireplan','fiscalyears','employeesmain','leavesbalances','empleaves','reports','ess','attendance','attpermissions','disciplinary','emppromotions','documenttypes','emparchives','payroll'];
-        $modAr = ['home'=>'لوحة التحكم','appmodules'=>'وحدات التطبيق','deptypes'=>'أنواع الأقسام','depstructure'=>'هيكلة الأقسام','users'=>'المستخدمون','permissions'=>'الصلاحيات','accesslog'=>'سجل الدخول','notifications'=>'الإشعارات','employeesgroup'=>'مجموعات الموظفين','employeestypes'=>'أنواع الموظفين','leavestypes'=>'أنواع الإجازات','holidays'=>'العطلات الرسمية','empdegrees'=>'الدرجات الوظيفية','empstatus'=>'الحالة الوظيفية','retireplan'=>'خطة التقاعد','fiscalyears'=>'السنة المالية','employeesmain'=>'الموظفون الرئيسيون','leavesbalances'=>'أرصدة الإجازات','empleaves'=>'إجازات الموظفين','reports'=>'التقارير','ess'=>'خدمة الموظف الذاتية','attendance'=>'الحضور والانصراف','attpermissions'=>'إذونات الحضور','disciplinary'=>'جزاءات الموظفين','emppromotions'=>'ترقية موظف','documenttypes'=>'نوع المستند','emparchives'=>'أرشيف الموظفين','payroll'=>'الإستحقاقات'];
+        $modules = ['home','appmodules','deptypes','depstructure','users','userprofile','permissions','accesslog','notifications','employeesgroup','employeestypes','leavestypes','holidays','empdegrees','empstatus','retireplan','fiscalyears','employeesmain','leavesbalances','empleaves','reports','ess','attendance','attpermissions','disciplinary','emppromotions','documenttypes','emparchives','payroll'];
+        $modAr = ['home'=>'لوحة التحكم','appmodules'=>'وحدات التطبيق','deptypes'=>'أنواع الأقسام','depstructure'=>'هيكلة الأقسام','users'=>'المستخدمون','userprofile'=>'الملف الشخصي','permissions'=>'الصلاحيات','accesslog'=>'سجل الدخول','notifications'=>'الإشعارات','employeesgroup'=>'مجموعات الموظفين','employeestypes'=>'أنواع الموظفين','leavestypes'=>'أنواع الإجازات','holidays'=>'العطلات الرسمية','empdegrees'=>'الدرجات الوظيفية','empstatus'=>'الحالة الوظيفية','retireplan'=>'خطة التقاعد','fiscalyears'=>'السنة المالية','employeesmain'=>'الموظفون الرئيسيون','leavesbalances'=>'أرصدة الإجازات','empleaves'=>'إجازات الموظفين','reports'=>'التقارير','ess'=>'خدمة الموظف الذاتية','attendance'=>'الحضور والانصراف','attpermissions'=>'إذونات الحضور','disciplinary'=>'جزاءات الموظفين','emppromotions'=>'ترقية موظف','documenttypes'=>'نوع المستند','emparchives'=>'أرشيف الموظفين','payroll'=>'الإستحقاقات'];
         $adminId = null;
         $permId = null;
         $u = $pdo->query("SELECT id FROM `{$P}users` WHERE username = 'admin' AND omitted = 0 LIMIT 1")->fetch();

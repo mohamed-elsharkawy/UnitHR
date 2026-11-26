@@ -3,7 +3,8 @@
 // These flags can be preset by the caller; otherwise derive them from the request.
 if (!isset($isEss)) {
     $isEss = (function_exists('current_module') && current_module() === 'ess')
-        || (function_exists('current_module') && current_module() === 'notifications' && !is_app_staff());
+        || (function_exists('current_module') && current_module() === 'notifications' && !is_app_staff())
+        || (function_exists('current_module') && current_module() === 'userprofile' && !is_app_staff());
 }
 if (!isset($isAuthPage)) {
     $isAuthPage = in_array($_GET['action'] ?? '', ['login', 'verify-otp', 'setup-otp', 'otp', 'logout', 'change-password'], true);
@@ -124,6 +125,13 @@ if (!function_exists('mod_display_name')) {
             <span class="fw-bold"><?= htmlspecialchars(app('appname', 'UnitHR')) ?> - <?= lang() === 'ar' ? 'خدمة الموظف الذاتية' : 'Employee Self-Service' ?></span>
         </a>
         <ul class="navbar-nav ms-auto align-items-center">
+            <?php if (is_logged_in()): ?>
+            <li class="nav-item me-2">
+                <a class="nav-link text-white-50" href="?module=userprofile">
+                    <i class="bi bi-person-circle me-1"></i><?= lang() === 'ar' ? 'ملفي الشخصي' : 'My Profile' ?>
+                </a>
+            </li>
+            <?php endif; ?>
             <?php if (is_logged_in()) { notifications_render_bell(); } ?>
             <li class="nav-item me-2">
                 <a class="nav-link lang-switch text-white-50" href="?lang=<?= lang() === 'ar' ? 'en' : 'ar' ?>&module=ess">
@@ -185,6 +193,7 @@ if (!function_exists('mod_display_name')) {
                         <i class="bi bi-person-circle me-1">&nbsp;</i><?= htmlspecialchars(current_user()['username'] ?? '') ?>
                     </a>
                     <ul class="dropdown-menu dropdown-menu-end text-center">
+                        <li><a class="dropdown-item" href="?module=userprofile"><i class="bi bi-person-circle me-1">&nbsp;</i><?= lang() === 'ar' ? 'ملفي الشخصي' : 'My Profile' ?></a></li>
                         <?php if (user_can('users', 'view')): ?>
                         <li><a class="dropdown-item" href="?module=users"><?= lang() === 'ar' ? 'المستخدمون' : 'Users' ?></a></li>
                         <?php endif; ?>
@@ -192,7 +201,7 @@ if (!function_exists('mod_display_name')) {
                         <li><a class="dropdown-item" href="?module=accesslog"><?= lang() === 'ar' ? 'سجل الدخول' : 'Access Log' ?></a></li>
                         <?php endif; ?>
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="?action=change-password"><i class="bi bi-key me-1">&nbsp;</i><?= lang() === 'ar' ? 'تغيير كلمة المرور' : 'Change Password' ?></a></li>
+                        <li><a class="dropdown-item" href="?module=userprofile#profile-password"><i class="bi bi-key me-1">&nbsp;</i><?= lang() === 'ar' ? 'تغيير كلمة المرور' : 'Change Password' ?></a></li>
                         <li><a class="dropdown-item" href="?action=logout"><?= lang() === 'ar' ? 'تسجيل خروج' : 'Logout' ?></a></li>
                     </ul>
                 </li>

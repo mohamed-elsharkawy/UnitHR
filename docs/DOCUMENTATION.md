@@ -360,6 +360,14 @@ All existing degrees are assigned to group 1 (`Administrative Staff`).
 - Access log records all login/logout attempts
 - Soft-delete (omitted flag) preserves all records
 
+### API Tokens & Self-Service Profile
+- Each account has a persistent `api_token` in `uhr_users` (initially its `rguid`).
+- Tokens authenticate REST requests via `X-API-Token` or `Authorization: Bearer`.
+- Rotating the token (My Profile / `action=regenerate_token`) revokes prior tokens.
+- The My Profile module (`modules/userprofile`) lets users change email (synced to
+  `employeesmain` when linked), password, and rotate their API token.
+- My Profile is reachable from the navbar dropdown and the end of the side menu.
+
 ---
 
 ## Configuration

@@ -323,8 +323,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($action, ['add', 'edit']))
                 $encPass = password_hash('user1234', PASSWORD_DEFAULT);
                 $existingUser = fetchRow("SELECT id FROM " . table('users') . " WHERE username = ? OR email = ? LIMIT 1", [$empUsername, $empEmail]);
                 if (!$existingUser) {
-                    q("INSERT INTO " . table('users') . " (rguid, username, email, password, is_admin, is_superadmin, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,?,?,?,?,? ,?,?,?,?,?,?,?,0)", [
-                        bin2hex(random_bytes(16)), $empUsername, $empEmail, $encPass, 0, 0,
+                    $userRguid = bin2hex(random_bytes(16));
+                    q("INSERT INTO " . table('users') . " (rguid, api_token, username, email, password, is_admin, is_superadmin, addedbyid, addedby, addedbyname, addedbynamear, lastedit, editedbyid, editedby, editedbyname, editedbynamear, omitted) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)", [
+                        $userRguid, $userRguid, $empUsername, $empEmail, $encPass, 0, 0,
                         $u['id'], $u['username'], $u['username_ar'] ?? $u['username'], $u['username_ar'] ?? $u['username'],
                         date('Y-m-d H:i:s'), $u['id'], $u['username'], $u['username_ar'] ?? $u['username'], $u['username_ar'] ?? $u['username']
                     ]);

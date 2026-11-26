@@ -193,7 +193,11 @@ if ($action === 'add') {
             $now = date('Y-m-d H:i:s');
             $an = $u['username_ar'] ?? $u['username'];
             $cols = []; $vals = []; $params = [];
-            $cols[] = '`rguid`'; $vals[] = '?'; $params[] = bin2hex(random_bytes(16));
+            // The initial API token is the account rguid. The user can rotate
+            // it later from the My Profile module.
+            $rguid = bin2hex(random_bytes(16));
+            $cols[] = '`rguid`'; $vals[] = '?'; $params[] = $rguid;
+            $cols[] = '`api_token`'; $vals[] = '?'; $params[] = $rguid;
             foreach ($data as $k => $v) {
                 if (is_audit_col($k)) continue;
                 $cols[] = '`'.$k.'`'; $vals[] = '?'; $params[] = $v;
@@ -297,6 +301,11 @@ if ($action === 'edit' && $id) {
             $params[] = $id;
             if (q("UPDATE " . table('users') . " SET " . implode(',', $sets) . " WHERE `id`=?", $params)) {
                 sync_user_permissions($id, $selPerms, $u, $an, $now);
+                // Keep the employee master record in step when the account
+                // email changes and this user is also an employee.
+                if (strcasecmp((string)$row['email'], (string)$data['email']) !== 0) {
+                    sync_user_email_to_employee($row, (string)$row['email'], (string)$data['email']);
+                }
                 set_flash('success', $isAr ? 'تم تحديث المستخدم.' : 'User updated.');
                 header('Location: ?module=users'); exit;
             } else {

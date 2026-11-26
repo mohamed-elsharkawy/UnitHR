@@ -335,6 +335,124 @@ function require_permission($module, $action = 'view') {
 }
 
 // -------------------------------------------------------------------------
+// CSRF protection for state-changing pages (profile, account settings, ...).
+// The token is kept in the application's session namespace and compared with
+// hash_equals() so a submitted value cannot be guessed from response timing.
+// -------------------------------------------------------------------------
+function csrf_token() {
+    if (empty($_SESSION[UHR_SESSION_KEY]['csrf_token'])) {
+        $_SESSION[UHR_SESSION_KEY]['csrf_token'] = bin2hex(random_bytes(32));
+    }
+    return $_SESSION[UHR_SESSION_KEY]['csrf_token'];
+}
+
+function csrf_field() {
+    return '<input type="hidden" name="csrf_token" value="'
+        . htmlspecialchars(csrf_token(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '">';
+}
+
+function csrf_verify($token = null) {
+    $token = $token ?? ($_POST['csrf_token'] ?? '');
+    $stored = $_SESSION[UHR_SESSION_KEY]['csrf_token'] ?? '';
+    return is_string($token) && $stored !== '' && hash_equals($stored, $token);
+}
+
+// -------------------------------------------------------------------------
+// Per-user API token helpers.
+// Every account has a persistent token in uhr_users.api_token. The first
+// token is the account's rguid; the profile page can rotate it at any time.
+// -------------------------------------------------------------------------
+function ensure_user_api_token($user) {
+    $token = trim((string)($user['api_token'] ?? ''));
+    if ($token !== '') {
+        return $token;
+    }
+    $token = trim((string)($user['rguid'] ?? ''));
+    if ($token === '') {
+        $token = bin2hex(random_bytes(32));
+    }
+    // A rotated/legacy token could collide with another account; retry with
+    // a cryptographically random value until it is unique.
+    $duplicate = fetchRow("SELECT id FROM " . table('users') . " WHERE BINARY api_token = ? AND id <> ? LIMIT 1",
+        [$token, (int)($user['id'] ?? 0)]);
+    if ($duplicate) {
+        $token = bin2hex(random_bytes(32));
+    }
+    q("UPDATE " . table('users') . " SET api_token = ?, lastedit = NOW() WHERE id = ?",
+        [$token, (int)($user['id'] ?? 0)]);
+    return $token;
+}
+
+/**
+ * Find the employeesmain record linked to a user account.
+ *
+ * Linkage is inferred from the data the system already stores:
+ *   - username = employeesmain.nid          (employee accounts use the NID)
+ *   - username = employeesmain.insuranceid
+ *   - users.email = employeesmain.email
+ * The NID/insurance matches win over an email match.
+ */
+function find_employee_for_user($user) {
+    if (!is_array($user)) {
+        return null;
+    }
+    $username = trim((string)($user['username'] ?? ''));
+    $email = trim((string)($user['email'] ?? ''));
+    if ($username === '' && $email === '') {
+        return null;
+    }
+    $where = [];
+    $params = [];
+    if ($username !== '') {
+        $where[] = 'nid = ?';
+        $params[] = $username;
+        $where[] = 'insuranceid = ?';
+        $params[] = $username;
+    }
+    if ($email !== '') {
+        $where[] = 'LOWER(email) = ?';
+        $params[] = strtolower($email);
+    }
+    $sql = "SELECT id, empfullname, empfullnamear, email, nid, insuranceid
+            FROM " . table('employeesmain') . "
+            WHERE omitted = 0 AND (" . implode(' OR ', $where) . ")
+            ORDER BY CASE WHEN nid = ? THEN 0 WHEN insuranceid = ? THEN 1 ELSE 2 END, id
+            LIMIT 1";
+    $params[] = $username;
+    $params[] = $username;
+    $row = fetchRow($sql, $params);
+    return $row ?: null;
+}
+
+/**
+ * Keep employeesmain.email in step when a user changes the email address on
+ * their account (or an administrator changes it from the Users module).
+ *
+ * @return int|null employeesmain id when a linked employee was updated.
+ */
+function sync_user_email_to_employee($user, $oldEmail, $newEmail) {
+    $employee = find_employee_for_user($user);
+    if (!$employee) {
+        return null;
+    }
+    $actor = current_user() ?: [];
+    $now = date('Y-m-d H:i:s');
+    $ok = q("UPDATE " . table('employeesmain') . "
+             SET email = ?, lastedit = ?, editedbyid = ?, editedby = ?, editedbyname = ?, editedbynamear = ?
+             WHERE id = ? AND omitted = 0",
+        [
+            $newEmail,
+            $now,
+            (int)($actor['id'] ?? 0),
+            (string)($actor['username'] ?? 'system'),
+            (string)($actor['username'] ?? 'system'),
+            (string)($actor['username_ar'] ?? $actor['username'] ?? 'system'),
+            (int)$employee['id'],
+        ]);
+    return $ok ? (int)$employee['id'] : null;
+}
+
+// -------------------------------------------------------------------------
 // Audit shadow log: before a record is updated, save a snapshot
 // with extra columns identifying who edited and when.
 // -------------------------------------------------------------------------

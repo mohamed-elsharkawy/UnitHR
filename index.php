@@ -18,86 +18,6 @@ if (!defined('UNITHR_ENTRY')) {
     define('UNITHR_ENTRY', true);
 }
 
-// Handle Change Password
-if ($action === 'change-password') {
-    require_login();
-    $u = current_user();
-    $isAr = lang() === 'ar';
-    $error = '';
-    $success = '';
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $currentPass = $_POST['current_password'] ?? '';
-        $newPass = $_POST['new_password'] ?? '';
-        $confirmPass = $_POST['confirm_password'] ?? '';
-        
-        if (empty($currentPass) || empty($newPass) || empty($confirmPass)) {
-            $error = $isAr ? 'جميع الحقول مطلوبة.' : 'All fields are required.';
-        } elseif ($newPass !== $confirmPass) {
-            $error = $isAr ? 'كلمة المرور الجديدة وتأكيدها غير متطابقتين.' : 'New password and confirmation do not match.';
-        } elseif (strlen($newPass) < 6) {
-            $error = $isAr ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' : 'Password must be at least 6 characters.';
-        } else {
-            $pdo = db();
-            $stmt = $pdo->prepare("SELECT password FROM " . table('users') . " WHERE id = ? AND omitted = 0 LIMIT 1");
-            $stmt->execute([(int)$u['id']]);
-            $storedPass = $stmt->fetchColumn();
-            
-            if (!verify_password($currentPass, $storedPass)) {
-                $error = $isAr ? 'كلمة المرور الحالية غير صحيحة.' : 'Current password is incorrect.';
-            } else {
-                $hashedPass = password_hash($newPass, PASSWORD_DEFAULT);
-                $result = q("UPDATE " . table('users') . " SET password = ?, lastedit = ?, editedbyid = ?, editedby = ? WHERE id = ?", 
-                    [$hashedPass, date('Y-m-d H:i:s'), (int)$u['id'], $u['username'], (int)$u['id']]);
-                if ($result) {
-                    $success = $isAr ? 'تم تغيير كلمة المرور بنجاح.' : 'Password changed successfully.';
-                } else {
-                    $error = $isAr ? 'فشل تغيير كلمة المرور.' : 'Failed to change password.';
-                }
-            }
-        }
-    }
-    include __DIR__ . '/includes/header.php';
-    ?>
-    <div class="row justify-content-center">
-        <div class="col-md-6 col-lg-5">
-            <div class="card shadow">
-                <div class="card-body p-4">
-                    <div class="text-center mb-4">
-                        <h2 class="card-title"><i class="bi bi-key me-2"></i><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></h2>
-                    </div>
-                    <?php if ($error): ?>
-                    <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-                    <?php endif; ?>
-                    <?php if ($success): ?>
-                    <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
-                    <?php endif; ?>
-                    <form action="?action=change-password" method="post" novalidate>
-                        <div class="mb-3">
-                            <label class="form-label"><?= $isAr ? 'كلمة المرور الحالية' : 'Current Password' ?> <span class="text-danger">*</span></label>
-                            <input type="password" name="current_password" class="form-control" required autofocus>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><?= $isAr ? 'كلمة المرور الجديدة' : 'New Password' ?> <span class="text-danger">*</span></label>
-                            <input type="password" name="new_password" class="form-control" required minlength="6">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><?= $isAr ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password' ?> <span class="text-danger">*</span></label>
-                            <input type="password" name="confirm_password" class="form-control" required minlength="6">
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg"><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></button>
-                            <a href="./" class="btn btn-secondary"><?= $isAr ? 'العودة' : 'Back' ?></a>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php
-    include __DIR__ . '/includes/footer.php';
-    exit;
-}
-
 // Handle language switch
 if (!empty($_GET['lang'])) {
     $_SESSION[UHR_SESSION_KEY]['lang'] = in_array($_GET['lang'], ['ar', 'en']) ? $_GET['lang'] : 'ar';
@@ -177,85 +97,11 @@ if ($action === 'login') {
     exit;
 }
 
-// Change Password page
+// Change Password: the self-service form now lives in the My Profile
+// module so password, email and API-token settings share one page.
 if ($action === 'change-password') {
     require_login();
-    $u = current_user();
-    $isAr = lang() === 'ar';
-    $error = '';
-    $success = '';
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-        $currentPass = $_POST['current_password'] ?? '';
-        $newPass = $_POST['new_password'] ?? '';
-        $confirmPass = $_POST['confirm_password'] ?? '';
-        
-        if (empty($currentPass) || empty($newPass) || empty($confirmPass)) {
-            $error = $isAr ? 'جميع الحقول مطلوبة.' : 'All fields are required.';
-        } elseif ($newPass !== $confirmPass) {
-            $error = $isAr ? 'كلمة المرور الجديدة وتأكيدها غير متطابقتين.' : 'New password and confirmation do not match.';
-        } elseif (strlen($newPass) < 6) {
-            $error = $isAr ? 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' : 'Password must be at least 6 characters.';
-        } else {
-            // Verify current password
-            $pdo = db();
-            $stmt = $pdo->prepare("SELECT password FROM " . table('users') . " WHERE id = ? AND omitted = 0 LIMIT 1");
-            $stmt->execute([(int)$u['id']]);
-            $storedPass = $stmt->fetchColumn();
-            
-            if (!verify_password($currentPass, $storedPass)) {
-                $error = $isAr ? 'كلمة المرور الحالية غير صحيحة.' : 'Current password is incorrect.';
-            } else {
-                // Update password
-                $hashedPass = password_hash($newPass, PASSWORD_DEFAULT);
-                $result = q("UPDATE " . table('users') . " SET password = ?, lastedit = ?, editedbyid = ?, editedby = ? WHERE id = ?", 
-                    [$hashedPass, date('Y-m-d H:i:s'), (int)$u['id'], $u['username'], (int)$u['id']]);
-                if ($result) {
-                    $success = $isAr ? 'تم تغيير كلمة المرور بنجاح.' : 'Password changed successfully.';
-                } else {
-                    $error = $isAr ? 'فشل تغيير كلمة المرور.' : 'Failed to change password.';
-                }
-            }
-        }
-    }
-    include __DIR__ . '/includes/header.php';
-    ?>
-    <div class="row justify-content-center">
-        <div class="col-md-6 col-lg-5">
-            <div class="card shadow">
-                <div class="card-body p-4">
-                    <div class="text-center mb-4">
-                        <h2 class="card-title"><i class="bi bi-key me-2"></i><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></h2>
-                    </div>
-                    <?php if ($error): ?>
-                    <div class="alert alert-danger"><?= htmlspecialchars($error) ?></div>
-                    <?php endif; ?>
-                    <?php if ($success): ?>
-                    <div class="alert alert-success"><?= htmlspecialchars($success) ?></div>
-                    <?php endif; ?>
-                    <form action="?action=change-password" method="post" novalidate>
-                        <div class="mb-3">
-                            <label class="form-label"><?= $isAr ? 'كلمة المرور الحالية' : 'Current Password' ?> <span class="text-danger">*</span></label>
-                            <input type="password" name="current_password" class="form-control" required autofocus>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><?= $isAr ? 'كلمة المرور الجديدة' : 'New Password' ?> <span class="text-danger">*</span></label>
-                            <input type="password" name="new_password" class="form-control" required minlength="6">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label"><?= $isAr ? 'تأكيد كلمة المرور الجديدة' : 'Confirm New Password' ?> <span class="text-danger">*</span></label>
-                            <input type="password" name="confirm_password" class="form-control" required minlength="6">
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg"><?= $isAr ? 'تغيير كلمة المرور' : 'Change Password' ?></button>
-                            <a href="./" class="btn btn-secondary"><?= $isAr ? 'العودة' : 'Back' ?></a>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-    <?php
-    include __DIR__ . '/includes/footer.php';
+    header('Location: ?module=userprofile#profile-password');
     exit;
 }
 
@@ -419,7 +265,7 @@ require_login();
 
 // Redirect employees (non-staff) to ESS if trying to access admin modules
 // (notifications is available to employees: it is their personal inbox).
-if (!is_app_staff() && !in_array(current_module(), ['ess', 'notifications', 'attpermissions'], true)) {
+if (!is_app_staff() && !in_array(current_module(), ['ess', 'notifications', 'attpermissions', 'userprofile'], true)) {
     header('Location: ?module=ess');
     exit;
 }
@@ -428,11 +274,23 @@ if (!is_app_staff() && !in_array(current_module(), ['ess', 'notifications', 'att
 // permission for (admins / superadmins have full access). Modules that are
 // always available to signed-in users (dashboard, ESS, personal inbox,
 // attendance self-service) bypass this check.
-$alwaysVisibleModules = ['home', 'ess', 'notifications', 'attpermissions'];
+$alwaysVisibleModules = ['home', 'ess', 'notifications', 'attpermissions', 'userprofile'];
 if (!is_superadmin() && !(current_user() && !empty(current_user()['is_admin']))) {
     $cm = current_module();
     if (!in_array($cm, $alwaysVisibleModules, true) && !user_can($cm, 'view')) {
         set_flash('error', 'You do not have permission to access this module.');
+        header('Location: ?module=home');
+        exit;
+    }
+}
+
+// Disabled modules are hidden from the menu; also block direct URLs.
+// "home" is never blocked here, otherwise a disabled dashboard would loop.
+$cm = current_module();
+if ($cm !== 'home') {
+    $cmInfo = get_module($cm);
+    if ($cmInfo !== null && array_key_exists('enabled', $cmInfo) && empty($cmInfo['enabled'])) {
+        set_flash('error', lang() === 'ar' ? 'هذه الوحدة معطلة.' : 'This module is disabled.');
         header('Location: ?module=home');
         exit;
     }
@@ -449,4 +307,31 @@ if (isset($_GET['a']) && in_array($_GET['a'], ['retire_dor', 'superior'], true))
 
 include __DIR__ . '/includes/header.php';
 load_module(current_module());
+?>
+<button type="button" id="uhrScrollTop" class="btn btn-primary shadow uhr-scroll-top"
+        aria-label="<?= lang() === 'ar' ? 'العودة إلى الأعلى' : 'Back to top' ?>"
+        title="<?= lang() === 'ar' ? 'العودة إلى الأعلى' : 'Back to top' ?>">
+    <i class="bi bi-arrow-up"></i>
+</button>
+<script>
+(function () {
+    var btn = document.getElementById('uhrScrollTop');
+    if (!btn) return;
+    var content = document.querySelector('.content-wrapper');
+    function scrollTopValue() {
+        return Math.max(window.pageYOffset || 0, content ? content.scrollTop : 0);
+    }
+    function updateButton() {
+        btn.classList.toggle('show', scrollTopValue() > 240);
+    }
+    window.addEventListener('scroll', updateButton, { passive: true });
+    if (content) content.addEventListener('scroll', updateButton, { passive: true });
+    btn.addEventListener('click', function () {
+        if (content) content.scrollTo({ top: 0, behavior: 'smooth' });
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+    updateButton();
+})();
+</script>
+<?php
 include __DIR__ . '/includes/footer.php';
